@@ -13,9 +13,11 @@ function Touch(){
 }
 
 function VacuumCacher(touch, asked, name){
+/*
     if (name){
         console.info('created VacuumCacher as ' + name);
     }
+*/
     if (!asked){
         var asked = [];
     }
@@ -23,14 +25,13 @@ function VacuumCacher(touch, asked, name){
     
     this.ask = function (id,lazy){
         if (!Lazy(asked).contains(id)){
-            console.info('asking (' + id + ') from ' + name);
+//            console.info('asking (' + id + ') from ' + name);
             missing.push(id);
             if (!lazy)
                 asked.push(id);
             touch.touch();
-        } else {
-            console.warn('(' + id + ') was just asked on ' + name);
-        }
+        } 
+//        else console.warn('(' + id + ') was just asked on ' + name);
     };
 
     this.getAskedIndex = function(){
@@ -46,6 +47,7 @@ function ManyToManyRelation(relation,m2m){
     var items = [];
     this.add = items.push.bind(items);
     this.add = function(item){
+        console.log('adding ' + item);
         if (!(Lazy(items).find(item))){
             items.push(item);
         }
@@ -65,8 +67,19 @@ function ManyToManyRelation(relation,m2m){
         }).pluck("0").toArray();
     };
 
-    this.del = function(r1,r2){
-        
+    this.del = function(item){
+        var l = items.length;
+        var idx = null;
+        for (var a = 0; a < l; a++){ 
+            if ((items[a][0] === item[0]) && (items[a][1] === item[1])){
+                idx = a;
+                break;
+            }
+        }
+        if (idx){
+            items.splice(a, 1);
+        }
+        console.log('deleting ', item);
     };
 }
 
@@ -204,7 +217,7 @@ var ListCacher = function(){
             return null;
         }
         
-        console.info('filter for', modelName, JSON.stringify(filter));
+//        console.info('filter for', modelName, JSON.stringify(filter));
 
         // if you fetch all objects from server, this model has to be marked as got all;
         if (Lazy(filter).size() == 0){

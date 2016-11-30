@@ -31,6 +31,20 @@ var baseORM = function(options, extORM){
     this.emit = events.emit.bind(this);
     this.$post = connection.$post.bind(connection);
 
+    // handling websocket events
+    events.on('ws-connected',function(ws){
+        console.info('Websocket connected');
+        // all json data has to be parsed by gotData
+        ws.onMessageJson(W2PRESOURCE.gotData.bind(W2PRESOURCE));
+        //
+        ws.onMessageText(function(message){
+            console.info('WS message : ' + message)
+        });
+    });
+    events.on('ws-disconnected', function(ws){
+        console.error('Websocket disconnected')
+    });
+
     // initialization
     var W2PRESOURCE = this;
     var IDB = {auth_group : Lazy({})}; // tableName -> data as Array
@@ -493,8 +507,7 @@ var baseORM = function(options, extORM){
                 } else {
                     var collection = [[ID, instance.id]];
                 }
-                W2P_POST(Klass.modelName, omodel + 's/delete', {collection: collection}, function (data) {
-                });
+                W2PRESOURCE.$post(Klass.modelName + '/' + omodel + 's/delete', {collection: collection});
             };
 
             Klass.prototype.linkReference = function (instance) {
@@ -525,15 +538,10 @@ var baseORM = function(options, extORM){
                         });
                     }
                 } else {
-                    if ((indexName in INDEX_M2M) && Lazy(INDEX_M2M[indexName][0].get(this.id)).contains(instance.id)) {
+                    if ((indexName in linker.m2mIndex) && Lazy(linker.m2mIndex[indexName]['get' + utils.capitalize(omodel)](instance.id)).find(this)) {
                         return;
                     }
-                    indexName = omodel + '/' + Klass.modelName;
-                    if ((indexName in INDEX_M2M) && Lazy(INDEX_M2M[indexName][0].get(this.id)).contains(instance.id)) {
-                        return;
-                    }
-                    W2P_POST(Klass.modelName, omodel + 's/put', {collection: [[this.id, instance.id]]}, function (data) {
-                    });
+                    W2PRESOURCE.$post(Klass.modelName + '/' + omodel + 's/put', {collection: [[this.id, instance.id]]});
                 }
             };
         }

@@ -107,6 +107,16 @@ reWheelConnection.prototype.connect = function(callBack){
                 });
             }
         }
+        if (status.token && status.realtimeEndPoint && (!self.wsConnection)){
+            self.wsConnection = new utils.wsConnect(status);
+            self.wsConnection.onConnect(function(){
+                self.events.emit('ws-connected', self.wsConnection);
+            });
+            self.wsConnection.onDisconnect(function(){
+                self.events.emit('ws-disconnected', self.wsConnection);
+                self.wsConnection = new utils.wsConnect(status);
+            });
+        }
     });
 };
 
@@ -225,11 +235,11 @@ var utils = {
                     self.handlers.onMessageText.handle(x.data);
                 }
             } else {
-                console.log(x);                
+                console.log(x);
             }
         };
         connection.onclose = function () {
-            setTimeout(wsConnect,1000);
+            setTimeout(utils.wsConnect,1000);
             self.handlers.onDisconnection.handle();
         };
         connection.tenant = function () {
