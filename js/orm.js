@@ -44,6 +44,10 @@ var baseORM = function(options, extORM){
     events.on('ws-disconnected', function(ws){
         console.error('Websocket disconnected')
     });
+    events.on('error-json-404',function(error,url, sentData, xhr){ 
+        console.error('JSON error ', JSON.stringify(error));
+        delete waitingConnections[url.split('/')[0]];
+    })
 
     // initialization
     var W2PRESOURCE = this;
@@ -215,9 +219,9 @@ var baseORM = function(options, extORM){
             return this.toString().toLowerCase();
         };
         
-        Klass.prototype.delete = function (scope) {
+        Klass.prototype.delete = function () {
             // delete instance from server
-            rewheel.del(this.constructor.modelName, this.id, scope);
+            return extORM.delete(this.constructor.modelName, [this.id]);
         };
 
         // permission getter property
@@ -658,6 +662,9 @@ var baseORM = function(options, extORM){
                     var oldItem = itab.get(x);
                     var oldCopy = oldItem.copy();
                     var newItem = new modelClass(idx.get(x));
+                    Lazy(model.fields).keys().each(function(k){
+                        oldItem[k] = newItem[k];
+                    });
                     changed.push([oldItem, oldCopy]);
                 });
 
@@ -765,6 +772,9 @@ var baseORM = function(options, extORM){
                         W2PRESOURCE.$post(modelName + '/list', {filter : filter},function(data){
                             W2PRESOURCE.gotData(data,callBack)
 
+                            // release lock
+                            delete waitingConnections[modelName];
+                        }, function(){
                             // release lock
                             delete waitingConnections[modelName];
                         });
@@ -876,7 +886,10 @@ var baseORM = function(options, extORM){
         this.fetch(modelName,filter,together, function(e){
             callBack(idx.filter(filterFunction).values().toArray());
         });
-    }
+    };
+    this.delete = function(modelName, ids, callBack){
+        return this.$post(modelName + '/delete', { id : ids}, callBack);
+    };
 };
 
 function reWheelORM(endPoint){
@@ -922,6 +935,23 @@ reWheelORM.prototype.query = function (modelName, filter, related){
             } else {
                 self.$orm.connect(function(){
                     self.$orm.query(modelName, filter, together, accept);
+                });
+            }
+        } catch (e){
+            reject(e);
+        }
+    })
+};
+
+reWheelORM.prototype.delete = function (modelName, ids){
+    var self = this;
+    return new Promise(function(accept, reject){
+        try{
+            if (self.$orm.connected){
+                self.$orm.delete(modelName, ids, accept);
+            } else {
+                self.$orm.connect(function(){
+                    self.$orm.delete(modelName, ids, accept);
                 });
             }
         } catch (e){
