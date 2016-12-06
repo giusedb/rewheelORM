@@ -13,25 +13,28 @@ var cached = function(func, key){
     return wrapper;
 }
 
-var $POST = function(url, data, callBack, errorBack, context){
+var $POST = function(url, data, callBack, errorBack,headers){
     var opts = {
         accepts : 'application/json',
         url : url,
         data : JSON.stringify(data),
+        dataType : 'json',
         success : callBack,
         error : errorBack,
         method : 'POST',
         contentType : 'application/json'
     };
-    if (context) {
-        opts.context = context;
+    if (headers){
+        opts.headers = headers;
+        opts.crossDomain = true;
     }
     return $.ajax(opts);
 }
 
-function reWheelConnection(endPoint){
+function reWheelConnection(endPoint, getLogin){
     // main 
     var self = this;
+    this.getLogin = getLogin;
     this.events = new NamedEventManager()
     this.$POST = $POST.bind(this);
     this.options = {endPoint : endPoint};
@@ -43,7 +46,7 @@ reWheelConnection.prototype.status = function(callBack){
         return setTimeout(function(){
             self.status(callBack);
         },50);
-    }
+    }  
     if (this.options && this.options.timestamp){
         callBack && callBack(this.options);
     } else {
@@ -51,16 +54,39 @@ reWheelConnection.prototype.status = function(callBack){
         var self = this;
         return this.$post('api/status',null,function(status){
             self._status_calling = false;
-            for (var x in status){
-               self.options[x] = status[x]; 
+            for (var x in status){ self.options[x] = status[x]; }
+            if (!status.user_id && self.getLogin){
+                var logInfo = self.getLogin();
+                if (logInfo.constructor === Object){
+                    self.login(logInfo.username, logInfo.password)
+                    .then(function(status){
+                        for (var x in status){ self.options[x] = status[x]; }
+                        callBack && callBack(status)
+                    })
+                }
+            } else {
+                callBack && callBack(self.options);
             }
-            callBack && callBack(self.options);
         });        
     }
 };
 
 reWheelConnection.prototype.$post = function(url, data,callBack){
     var ths = this;
+    if (this.options && this.options.token){
+        if (!data){
+            data = {};
+        }
+    }
+    if (this.options.token){
+        var headers = { 
+            token : this.options.token,
+            application : this.options.application
+        };
+    } else {
+        var headers = null;
+    }
+
     var promise = $POST(this.options.endPoint + url, data,function(responseData, status, xhr){
             ths.events.emit('http-response', responseData, xhr.status, url, data);
             ths.events.emit('http-response-' + xhr.status, responseData, url, data);
@@ -74,18 +100,33 @@ reWheelConnection.prototype.$post = function(url, data,callBack){
                 ths.events.emit('error-http',xhr.responseText, xhr.status,url,data,xhr);
                 ths.events.emit('error-http-' + xhr.status, xhr.responseText,url,data,xhr);
             }
-        });
+        }, headers);
     return promise;
 };
 reWheelConnection.prototype.login = function(username, password){
     var url = this.options.endPoint + 'api/login';
+    var connection = this;
+    var headers = null;
+    if (this.options.token){
+        headers = { token : this.options.token };
+    }
     return new Promise(function(accept,reject){
         $.ajax({
+//            headers : headers,
             url : url,
             data : { username: username, password : password},
+            dataType : 'json',
             method : 'POST',
-            success : accept,
-            error : reject
+//            contentType : 'application/json',
+            mimeType : 'application/json',
+            crossDomain : true,
+            success : function(status){
+                for (var x in status){ connection.options[x] = status[x]; }
+                accept(status);
+            },
+            error : function(xhr,data, status){
+                reject(xhr.responseJSON);
+            }
             
         })
     });

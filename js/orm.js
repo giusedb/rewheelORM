@@ -14,12 +14,8 @@ var baseORM = function(options, extORM){
     // creating rewheel connection
     if (options.constructor === String){
         var connection = new reWheelConnection(options);
-    } else {
-        if ('rewheel' in options){
-            var connection = options.rewheel;
-        } else if ('endPoint' in options) {
-            var connection = new reWheelConnection(options);
-        }
+    } else if (options.constructor === reWheelConnection){
+        var connection = options;
     }
     this.connection = connection;
     connection.on('connected', function(){ 
@@ -368,7 +364,7 @@ var baseORM = function(options, extORM){
                         oo[k] = v;
                     }
                 });
-                W2PRESOURCE.W2P_POST(this.constructor.modelName, 'savePA', oo, function () {
+                W2PRESOURCE.$post(this.constructor.modelName + '/savePA', oo, function () {
                     Lazy(oo).each(function (v, k) {
                         T[k] = v;
                     });
@@ -930,7 +926,7 @@ reWheelORM.prototype.query = function (modelName, filter, related){
             together = related.split(',');
         }
         try{
-            if (self.$orm.connected){
+            if (self.$orm.isConnected){
                 self.$orm.query(modelName, filter, together, accept);
             } else {
                 self.$orm.connect(function(){

@@ -1,6 +1,6 @@
 'use strict';
 
-function Touch(){
+function Toucher(){
     var touched = false
     this.touch = function(){
         touched = true;
@@ -84,7 +84,7 @@ function ManyToManyRelation(relation,m2m){
 }
 
 function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
-    var touch = new Touch();
+    var touch = new Toucher();
     var mainIndex = {};
     var foreignKeys = {};
     var m2m = {};
