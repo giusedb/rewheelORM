@@ -1,0 +1,29 @@
+{
+  "name": "rwtORM",
+  "description": "rewheel ORM interaction library",
+  "main": "main.js",
+  "keywords": [
+    "rewheel",
+    "data",
+    "database",
+    "restful"
+  ],
+  "authors": [
+    "Giuseppe Di Bona"
+  ],
+  "license": "MIT",
+  "homepage": "",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests",
+    ".vscode"
+  ],
+  "devDependencies": {
+    "jquery": "^3.1.1",
+    "lazy.js": "^0.4.2",
+    "sockjs": "^0.3.4"
+  }
+}

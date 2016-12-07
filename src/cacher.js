@@ -202,7 +202,7 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
         });
 */
     }
-    setInterval(linkUnlinked,500);
+    setInterval(linkUnlinked,50);
 };
 
 var ListCacher = function(){
@@ -262,8 +262,9 @@ var ListCacher = function(){
 function cachedPropertyByEvents(proto, propertyName,getter, setter){
     var events = Array.prototype.slice.call(arguments,4);
     var result = {};
+    
     Lazy(events).each(function(event){
-        orm.on(event,function(){
+        proto.orm.on(event,function(){
             result = {};
         });
     });

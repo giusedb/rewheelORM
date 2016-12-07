@@ -187,7 +187,7 @@ var baseORM = function(options, extORM){
             Klass.builderHandlers.push(decorator);
         };
 */
-
+        Klass.prototype.orm = extORM;
         Klass.ref_translations = {};
         Klass.modelName = model.name;
         Klass.references = Lazy(model.references).pluck('id').toArray();
@@ -730,6 +730,7 @@ var baseORM = function(options, extORM){
         if (callBack) {
             callBack(data);
         }
+        events.emit('got-data');
     };
 
     this.gotM2M = function(m2m){
@@ -801,7 +802,7 @@ var baseORM = function(options, extORM){
         W2PRESOURCE.fetch(modelName , {id: ids}, null,function(){
             var ret = [];
             var itab = IDB[modelName]
-            for (let id of ids){
+            for (var id in ids){
                 ret.push(itab.get(id));
             }
             callBack(ret);
