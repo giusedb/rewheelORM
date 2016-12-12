@@ -1,3 +1,4 @@
+utils.cleanStorage();
 var orm = new reWheelORM(new reWheelConnection('http://localhost:5000/cartha/', function(){
     return {
         username : 'a@b.com',

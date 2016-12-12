@@ -208,7 +208,9 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
 var ListCacher = function(){
     var gotAll = {};
     var asked = {}; // map of array
+    var conditionalAsked = {};
     this.filter = function(model, filter){
+        console.info(filter);
         var getIndexFor = this.getIndexFor;
         var modelName = model.modelName;
 
@@ -237,14 +239,43 @@ var ListCacher = function(){
         }).filter(function(x){
             return x[1].length;
         }).toObject();
-
-        // if only i know all elements but one
-        if (Lazy(missing).size()){
-            Lazy(filter).each(function(value,key){
-                var uniques = Lazy(value).difference(indexes[key]).toArray();
-                if (uniques.length)
-                    Array.prototype.push.apply(asked[modelName + '.' + key],value);
-            });
+        var missingLen = Lazy(missing).size();
+        var filterLen  = Lazy(filter).size();
+        // if i have at least an element i have all results
+        if (missingLen < filterLen){
+            return null;
+        } else {
+            if (missingLen == 1){
+                Lazy(filter).each(function(value,key){
+                    var uniques = Lazy(value).difference(indexes[key]).toArray();
+                    if (uniques.length)
+                        Array.prototype.push.apply(asked[modelName + '.' + key],value);
+                });
+            } else {
+                // conditional reference
+                Lazy(missing).keys().each(function(fieldName){
+                    fieldName = keys[fieldName];
+                    if (!(fieldName in conditionalAsked)){
+                        conditionalAsked[fieldName] = new ListCacher();
+                    }
+                    var ret = {};
+                    var flt = Lazy(missing).keys().map(function(key){
+                        return conditionalAsked[fieldName].filter(model,
+                            Lazy(missing).filter(function(v,k) {
+                                return k !== key;
+                            }).toObject()
+                        );
+                    }).toArray();
+                    return Lazy({}).merge.apply(flt.concat([function(x,y){
+                        return Lazy(x).union(y).toArray();
+                    }]));
+/*                    flt.forEach(function(x){
+                        ret[x[0]] = x[1];
+                    })
+                    return ret;
+*/
+                });
+            }
             return missing;
         }
         return null;

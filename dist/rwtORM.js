@@ -84,6 +84,52 @@ var cached = function (func, key) {
     return wrapper;
 };
 
+function xdr(url, data, callback, errback, application, token) {
+    var req;
+    if (data && data.constructor === Object) {
+        data = JSON.stringify(data);
+    }
+
+    if (XMLHttpRequest) {
+        req = new XMLHttpRequest();
+
+        if ('withCredentials' in req) {
+            req.open('POST', url, true);
+            req.onerror = errback;
+            req.onreadystatechange = function () {
+                if (req.readyState === 4) {
+                    if (req.status >= 200 && req.status < 400) {
+                        try {
+                            var responseText = JSON.parse(req.responseText);
+                        } catch (a) {
+                            var responseText = req.responseText;
+                        }
+                        callback(responseText, req.statusText, req);
+                    } else {
+                        errback(new Error('Response returned with non-OK status'));
+                    }
+                }
+            };
+            if (application) req.setRequestHeader('application', application);
+            if (token) req.setRequestHeader('token', token);
+            req.setRequestHeader('Accept', 'application/json');
+            req.send(data);
+        }
+    } else if (XDomainRequest) {
+        req = new XDomainRequest();
+        req.open('POST', url);
+        req.onerror = errback;
+        req.onload = function () {
+            callback(req.responseText, req.statusText, req);
+        };
+        if (application) req.setRequestHeader('application', application);
+        if (token) req.setRequestHeader('token', token);
+        req.send(data);
+    } else {
+        errback(new Error('CORS not supported'));
+    }
+}
+
 var $POST = function (url, data, callBack, errorBack, headers) {
     var opts = {
         accepts: 'application/json',
@@ -111,7 +157,18 @@ function reWheelConnection(endPoint, getLogin) {
     this.options = { endPoint: endPoint };
     this.on = this.events.on.bind(this);
 };
-reWheelConnection.prototype.status = function (callBack) {
+reWheelConnection.prototype.status = function (callBack, force) {
+    if ('lastRWTStatus' in localStorage && !force) {
+        try {
+            var status = JSON.parse(localStorage.lastRWTStatus);
+            for (var x in status) {
+                this.options[x] = status[x];
+            }
+        } catch (e) {
+            return this.status(callBack, true);
+        }
+        return callBack && callBack(status);
+    }
     if (this._status_calling) {
         var self = this;
         return setTimeout(function () {
@@ -124,6 +181,7 @@ reWheelConnection.prototype.status = function (callBack) {
         this._status_calling = true;
         var self = this;
         return this.$post('api/status', null, function (status) {
+            localStorage.lastRWTStatus = JSON.stringify(status);
             self._status_calling = false;
             for (var x in status) {
                 self.options[x] = status[x];
@@ -135,6 +193,7 @@ reWheelConnection.prototype.status = function (callBack) {
                         for (var x in status) {
                             self.options[x] = status[x];
                         }
+                        localStorage.lastRWTStatus = JSON.stringify(status);
                         callBack && callBack(status);
                     });
                 }
@@ -161,7 +220,7 @@ reWheelConnection.prototype.$post = function (url, data, callBack) {
         var headers = null;
     }
 
-    var promise = $POST(this.options.endPoint + url, data, function (responseData, status, xhr) {
+    var promise = xdr(this.options.endPoint + url, data, function (responseData, status, xhr) {
         ths.events.emit('http-response', responseData, xhr.status, url, data);
         ths.events.emit('http-response-' + xhr.status, responseData, url, data);
         if (callBack) {
@@ -176,7 +235,7 @@ reWheelConnection.prototype.$post = function (url, data, callBack) {
             ths.events.emit('error-http', xhr.responseText, xhr.status, url, data, xhr);
             ths.events.emit('error-http-' + xhr.status, xhr.responseText, url, data, xhr);
         }
-    }, headers);
+    }, this.options.application, this.options.token);
     return promise;
 };
 reWheelConnection.prototype.login = function (username, password) {
@@ -211,11 +270,23 @@ reWheelConnection.prototype.login = function (username, password) {
 };
 reWheelConnection.prototype.connect = function (callBack) {
     var self = this;
+    var wsconnect = function (self) {
+        self.wsConnection = new utils.wsConnect(self.options);
+        self.wsConnection.onConnect(function () {
+            self.events.emit('ws-connected', self.wsConnection);
+        });
+        self.wsConnection.onDisconnect(function () {
+            setTimeout(function () {
+                wsconnect(self);
+            }, 1000);
+        });
+    };
+
     return this.status(function (status) {
         if ('token' in self.options) {
             callBack && callBack(status);
         } else {
-            console.log('connecting to ' + this.options.endPoint);
+            console.log('connecting to ' + self.options.endPoint);
             if (self.options.username && self.options.password) {
                 self.login(self.options.username, self.options.password, function (data) {
                     callBack && callBack(data);
@@ -224,14 +295,7 @@ reWheelConnection.prototype.connect = function (callBack) {
             }
         }
         if (status.token && status.realtimeEndPoint && !self.wsConnection) {
-            self.wsConnection = new utils.wsConnect(status);
-            self.wsConnection.onConnect(function () {
-                self.events.emit('ws-connected', self.wsConnection);
-            });
-            self.wsConnection.onDisconnect(function () {
-                self.events.emit('ws-disconnected', self.wsConnection);
-                self.wsConnection = new utils.wsConnect(status);
-            });
+            wsconnect(self);
         }
     });
 };
@@ -313,6 +377,9 @@ var utils = {
     },
 
     wsConnect: function (options) {
+        if (!options) {
+            return;
+        }
         var self = this;
 
         // registering all event handlers
@@ -357,7 +424,7 @@ var utils = {
             self.handlers.onDisconnection.handle();
         };
         connection.tenant = function () {
-            connection.send('TENANT:' + self.options.application);
+            connection.send('TENANT:' + self.options.application + ':' + self.options.token);
         };
     },
 
@@ -624,7 +691,7 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache) {
                 });
         */
     };
-    setInterval(linkUnlinked, 500);
+    setInterval(linkUnlinked, 50);
 };
 
 var ListCacher = function () {
@@ -1521,7 +1588,7 @@ var baseORM = function (options, extORM) {
                     callBack && callBack(modelCache[modelName]);
                 } else {
                     waitingConnections[modelName] = true;
-                    this.$post(modelName + '/describe').then(function (data) {
+                    this.$post(modelName + '/describe', null, function (data) {
                         W2PRESOURCE.gotModel(data);
                         callBack && callBack(modelCache[modelName]);
                         delete waitingConnections[modelName];

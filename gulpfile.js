@@ -19,7 +19,7 @@ var deps = [
 gulp.task('default', function() {
     gulp.src(files)
         .pipe(babel())
-        .pipe(browserify())
+//        .pipe(browserify())
         .pipe(concat('rwtORM.js'))
         .pipe(gulp.dest('dist/'))
 });
@@ -27,9 +27,9 @@ gulp.task('default', function() {
 gulp.task('build', function() {
     gulp.src(files)
         .pipe(babel()).on('error',util.log)
-        .pipe(uglify().on('error',util.log))
-        .pipe(browserify())
         .pipe(concat('rwtORM.min.js'))
+//        .pipe(browserify())
+        .pipe(uglify().on('error',util.log))
         .pipe(gulp.dest('dist'))
 });
 

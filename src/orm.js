@@ -386,10 +386,13 @@ var baseORM = function(options, extORM){
             var local_ref = '_' + ref.id;
             cachedPropertyByEvents(Klass.prototype, ref.id,function () {
                 if (!(ext_ref in IDB)){
-                    W2PRESOURCE.describe(ext_ref);
+                    var ths = this;
+                    W2PRESOURCE.describe(ext_ref,function(x){
+                        linker.mainIndex[ext_ref].ask(ths[local_ref],true);
+                    });
                 }
                 var result = (ext_ref in IDB) && this[local_ref] && IDB[ext_ref].get(this[local_ref]);
-                if (!result) {
+                if (!result && (ext_ref in linker.mainIndex)) {
                     // asking to linker
                     return linker.mainIndex[ext_ref].ask(this[local_ref],true);
                 }
@@ -401,7 +404,7 @@ var baseORM = function(options, extORM){
                     }
                 }
                 this[local_ref] = value.id;
-            }, 'new-' + ext_ref, 'deleted-' + ext_ref);
+            }, 'new-' + ext_ref, 'deleted-' + ext_ref,'updated-' + ext_ref, 'new-model-' + ext_ref);
 
 
             Klass.prototype['get' + utils.capitalize(ref.id)] = function () {
@@ -448,7 +451,7 @@ var baseORM = function(options, extORM){
                             ids = getter(ths.id);
                             if (ids.length){
                                 W2PRESOURCE.fetch(omodelName, {id : ids});
-                                get = IDB[omodelName].get.bind(IDB[omodelName])
+                                get = getIndex(omodelName).get.bind(IDB[omodelName])
                             }
                         });
                         if (ids && get)
@@ -558,6 +561,7 @@ var baseORM = function(options, extORM){
             }
         }
         events.emit('new-model', Klass);
+        events.emit('new-model-' + Klass.modelName);
         return Klass;
     };
 
@@ -803,7 +807,7 @@ var baseORM = function(options, extORM){
             var ret = [];
             var itab = IDB[modelName]
             for (var id in ids){
-                ret.push(itab.get(id));
+                ret.push(itab.source[ids[id]]);
             }
             callBack(ret);
         });
@@ -835,8 +839,7 @@ var baseORM = function(options, extORM){
                     callBack && callBack(modelCache[modelName]);
                 } else {
                     waitingConnections[modelName] = true;
-                    this.$post(modelName + '/describe')
-                    .then(function(data){
+                    this.$post(modelName + '/describe',null, function(data){
                         W2PRESOURCE.gotModel(data);
                         callBack && callBack(modelCache[modelName]);
                         delete waitingConnections[modelName];
@@ -906,7 +909,9 @@ reWheelORM.prototype.get = function(modelName, ids){
         try{
             self.$orm.connect(function(){
                 if (single){
-                    self.$orm.get(modName, ids, function(items){ accept(items[0]);});
+                    self.$orm.get(modName, ids, function(items){ 
+                        accept(items[0]);}
+                    );
                 } else {
                     self.$orm.get(modName, ids, accept);
                 }

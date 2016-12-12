@@ -1,9 +1,13 @@
+utils.cleanStorage();
+
 var orm = new reWheelORM(new reWheelConnection('http://localhost:5000/cartha/', function(){
     return {
         username : 'a@b.com',
         password : 'pippo'
     }
 }));
+
+
 
 var folders = null;
 var ul = $('<ul></ul>');
@@ -26,7 +30,7 @@ function renderFolders() {
         });
 }
 
-orm.query('folder',{})
+orm.query('folder',{parent : [1], condominio : [1,2]})
     .then(function(x){
         folders = x;
         renderFolders()
