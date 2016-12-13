@@ -51,20 +51,14 @@ var baseORM = function(options, extORM){
     window.DB = IDB;
     var IDX = {}; // tableName -> Lazy(indexBy('id')) -> IDB[data]
     var REVIDX = {}; // tableName -> fieldName -> Lazy.groupBy() -> IDB[DATA]
-    var INDEX_UNLINKED = {};
-    var INDEX_M2M = {};
-    var GOT_ALL = Lazy([]);
-    var LISTCACHE = {};
     var builderHandlers = {};
     var builderHandlerUsed = {};
     var eventHandlers = {};
-//    var MODEL_DATEFIELDS = {};
-//    var MODEL_BOOLFIELDS = {};
     var permissionWaiting = {};
     var modelCache = {};
     var failedModels = {};
     var waitingConnections = {} // actual connection who i'm waiting for
-    var listCache = new ListCacher();
+    var listCache = new ListCacher(Lazy);
     var linker = new AutoLinker(events,waitingConnections,IDB, this, listCache);
     window.ll = linker;
     window.lc = listCache;
@@ -881,11 +875,14 @@ var baseORM = function(options, extORM){
         }
     };
     this.query = function(modelName, filter, together, callBack){
-        var filterFunction = utils.makeFilter(filter);
-        var idx = getIndex(modelName);
-        this.fetch(modelName,filter,together, function(e){
-            callBack(idx.filter(filterFunction).values().toArray());
-        });
+        var ths = this;
+        this.describe(modelName,function(model){
+            var filterFunction = utils.makeFilter(model, filter);
+            var idx = getIndex(modelName);
+            ths.fetch(modelName,filter,together, function(e){
+                callBack(idx.filter(filterFunction).values().toArray());
+            });
+        })
     };
     this.delete = function(modelName, ids, callBack){
         return this.$post(modelName + '/delete', { id : ids}, callBack);

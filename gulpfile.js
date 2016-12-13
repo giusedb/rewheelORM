@@ -5,7 +5,7 @@ var uglify = require('gulp-uglify');
 var util = require('gulp-util');
 var babel = require('gulp-babel')
 
-var filesNames = ["handlers.js", "utils.js", "listcacher.js", "cacher.js", "orm.js", ];
+var filesNames = ["handlers.js", "utils.js", "toucher.js","vacuumcacher.js" , "autolinker.js", "listcacher.js", "cacher.js", "orm.js", ];
 var files = filesNames.map(function(x) {
     return "src/" + x;
 });

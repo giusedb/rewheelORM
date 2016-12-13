@@ -10,7 +10,7 @@ var docs = null;
 var ul = $('<ul></ul>');
 $('body').append(ul);
 function renderDoc(doc){
-    return $('<li>' + doc.name + ' <b>on</b> ' + doc.parent +'</li>');
+    return $('<li>(' + doc._parent + ') -- ' + doc.name + ' <b>on</b> ' + (doc.parent && doc.parent.name) +'</li>');
 }
 
 function renderDocs(docs) {
@@ -21,7 +21,7 @@ function renderDocs(docs) {
         });
 }
 
-orm.query('doc',{})
+orm.query('doc',{ parent : Lazy.range(100).toArray()})
     .then(function(documents){
         docs = documents;
         renderDocs(documents)

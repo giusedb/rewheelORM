@@ -346,6 +346,28 @@ var utils = {
     },
 
     makeFilter: function (model, filter) {
+        if (Lazy(filter).size() === 0) {
+            return function (x) {
+                return true;
+            };
+        }
+        var source = Lazy(filter).map(function (vals, field) {
+            if (vals.constructor !== Array) {
+                vals = [vals];
+            }
+            if (model.fields[field].type === 'reference') {
+                field = '_' + field;
+                vals = Lazy(vals).filter(Boolean).map(function (x) {
+                    if (x.constructor !== Number) {
+                        return x.id;
+                    } else return x;
+                }).toArray();
+            }
+            return '(' + Lazy(vals).map(function (x) {
+                return '(x.' + field + ' === ' + x + ')';
+            }).join(' || ') + ')';
+        }).toArray().join(' && ');
+        return new Function('x', 'return ' + source);
         var nvFilter = Lazy(filter).map(function (v, k) {
             if (v.constructor == Array) {
                 v = Lazy(v).map(function (x) {
@@ -501,6 +523,210 @@ var findControllerAs = function (scope, findFunc) {
         _scope = _scope.$parent;
     }
 };
+'use strict';
+
+function Toucher() {
+    var touched = false;
+    this.touch = function () {
+        touched = true;
+    };
+    this.touched = function () {
+        var t = touched;
+        touched = false;
+        return t;
+    };
+}
+'use strict';
+
+function VacuumCacher(touch, asked, name) {
+    /*
+        if (name){
+            console.info('created VacuumCacher as ' + name);
+        }
+    */
+    if (!asked) {
+        var asked = [];
+    }
+    var missing = [];
+
+    this.ask = function (id, lazy) {
+        if (!Lazy(asked).contains(id)) {
+            //            console.info('asking (' + id + ') from ' + name);
+            missing.push(id);
+            if (!lazy) asked.push(id);
+            touch.touch();
+        }
+        //        else console.warn('(' + id + ') was just asked on ' + name);
+    };
+
+    this.getAskedIndex = function () {
+        return asked;
+    };
+
+    this.missings = function () {
+        return Lazy(missing.splice(0, missing.length)).unique().toArray();
+    };
+}
+
+function ManyToManyRelation(relation, m2m) {
+    var items = [];
+    this.add = items.push.bind(items);
+    this.add = function (item) {
+        console.log('adding ' + item);
+        if (!Lazy(items).find(item)) {
+            items.push(item);
+        }
+    };
+
+    this['get' + utils.capitalize(relation.indexName.split('/')[0])] = function (id) {
+        m2m[1].ask(id);
+        return Lazy(items).filter(function (x) {
+            return x[0] === id;
+        }).pluck("1").toArray();
+    };
+
+    this['get' + utils.capitalize(relation.indexName.split('/')[1])] = function (id) {
+        m2m[0].ask(id);
+        return Lazy(items).filter(function (x) {
+            return x[1] === id;
+        }).pluck("0").toArray();
+    };
+
+    this.del = function (item) {
+        var l = items.length;
+        var idx = null;
+        for (var a = 0; a < l; a++) {
+            if (items[a][0] === item[0] && items[a][1] === item[1]) {
+                idx = a;
+                break;
+            }
+        }
+        if (idx) {
+            items.splice(a, 1);
+        }
+        console.log('deleting ', item);
+    };
+}
+'use strict';
+
+function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache) {
+    var touch = new Toucher();
+    var mainIndex = {};
+    var foreignKeys = {};
+    var m2m = {};
+    var m2mIndex = {};
+    var permissions = {};
+    this.mainIndex = mainIndex;
+    this.foreignKeys = foreignKeys;
+    this.m2m = m2m;
+    this.m2mIndex = m2mIndex;
+    this.permissions = permissions;
+
+    events.on('model-definition', function (model) {
+        // defining all indexes for primary key
+        var pkIndex = listCache.getIndexFor(model.name, 'id');
+        mainIndex[model.name] = new VacuumCacher(touch, pkIndex, 'mainIndex.' + model.name);
+
+        // creating permission indexes
+        permissions[model.name] = new VacuumCacher(touch, null, 'permissions.' + model.name);
+
+        // creating indexes for foreign keys
+        Lazy(model.references).each(function (reference) {
+            var indexName = model.name + '_' + reference.id;
+            foreignKeys[indexName] = new VacuumCacher(touch, listCache.getIndexFor(reference.to, 'id'), reference.to + '.id foreignKeys.' + indexName);
+        });
+        // creating reverse foreign keys
+        Lazy(model.referencedBy).each(function (field) {
+            var indexName = field.by + '.' + field.id;
+            foreignKeys[indexName] = new VacuumCacher(touch, listCache.getIndexFor(field.by, field.id), field.by + '.' + field.id + ' foreignKeys.' + indexName);
+        });
+        Lazy(model.manyToMany).each(function (relation) {
+            if (!(relation.indexName in m2m)) m2m[relation.indexName] = [new VacuumCacher(touch, null, 'm2m.' + relation.indexName + '[0]'), new VacuumCacher(touch, null, 'm2m.' + relation.indexName + '[1]')];
+            if (!(relation.indexName in m2mIndex)) m2mIndex[relation.indexName] = new ManyToManyRelation(relation, m2m[relation.indexName]);
+        });
+    });
+    var getM2M = function (indexName, collection, n, callBack) {
+        // ask all items in collection to m2m index
+        Lazy(collection).each(m2m[indexName][n].ask.bind(m2m[indexName][n]));
+        // renewing collection without asked
+        collection = m2m[indexName][n].missings();
+        // calling remote for m2m collection if any
+        if (collection.length) {
+            actives[indexName] = 1;
+            W2PRESOURCE.$post((n ? utils.reverse('/', indexName) : indexName) + 's' + '/list', { collection: collection }, function (data) {
+                W2PRESOURCE.gotData(data, callBack);
+                delete actives[indexName];
+            });
+        } else {
+            callBack && callBack();
+        }
+    };
+    this.getM2M = getM2M;
+
+    var linkUnlinked = function () {
+        // perform a DataBase synchronization with server looking for unknown data
+        if (!touch.touched()) return;
+        if (Lazy(actives).values().sum()) {
+            touch.touch();
+            return;
+        }
+        var changed = false;
+        Lazy(m2m).each(function (indexes, indexName) {
+            Lazy(indexes).each(function (index, n) {
+                var collection = index.missings();
+                collection = Lazy(collection).filter(function (x) {
+                    return x;
+                }).map(function (x) {
+                    return parseInt(x);
+                }).toArray();
+                if (collection.length) {
+                    var INDEX = m2mIndex[indexName];
+                    changed = true;
+                    getM2M(indexName, collection, n);
+                }
+            });
+        });
+        Lazy(mainIndex).each(function (index, modelName) {
+            var ids = index.missings();
+            if (ids.length) {
+                changed = true;
+                var idb = modelName in IDB ? IDB[modelName].keys() : Lazy();
+                //log('linking.' + modelName + ' = ' + W2PRESOURCE.linking.source[modelName]);
+                W2PRESOURCE.fetch(modelName, { id: ids }, null, utils.noop);
+            }
+        });
+        // Foreign keys
+        Lazy(foreignKeys).map(function (v, k) {
+            return [k, v.missings()];
+        }).filter(function (v) {
+            return v[1].length;
+        }).each(function (x) {
+            changed = true;
+            var ids = x[1];
+            var indexName = x[0];
+            var index = indexName.split('.');
+            var mainResource = index[0];
+            var fieldName = index[1];
+            var filter = {};
+            filter[fieldName] = ids;
+            W2PRESOURCE.fetch(mainResource, filter);
+        });
+        /*        
+                Lazy(MISSING_PERMISSIONS).filter(function (x) {
+                    return (x.length > 0) && (!(x in permissionWaiting));
+                }).each(function (x, resourceName) {
+                    changed = true;
+                    var ids = MISSING_PERMISSIONS[resourceName].splice(0);
+                    permissionWaiting[resourceName] = 1;
+                    W2P_POST(resourceName, 'my_perms', {ids: Lazy(ids).unique().toArray()}, function (data) {
+                        W2PRESOURCE.gotPermissions(data.PERMISSIONS);
+                        delete permissionWaiting[resourceName]
+                    });
+                });
+        */
+    };
+    setInterval(linkUnlinked, 50);
+};
 "use strict";
 
 (function (root, factory) {
@@ -512,37 +738,35 @@ var findControllerAs = function (scope, findFunc) {
         root.ListCacher = factory();
     }
 })(this, function (context) {
-    function ListCacher() {
+    function ListCacher(Lazy) {
         var gotAll = {};
         var asked = {}; // map of array
         var conditionalAsked = {};
         this.filter = function (model, filter) {
-            console.info(filter);
+            console.log('------------------\nfilter : ' + JSON.stringify(filter));
             var getIndexFor = this.getIndexFor;
             var modelName = model.modelName;
 
             // if all objects were fetched from server you have not to fetch anything
             if (modelName in gotAll) {
+                console.log('out : null');
                 return null;
             }
-
-            //        console.info('filter for', modelName, JSON.stringify(filter));
-
             // if you fetch all objects from server, this model has to be marked as got all;
-            if (Lazy(filter).size() == 0) {
+            var filterLen = Lazy(filter).size();
+            if (filterLen === 0) {
+                var got = gotAll[modelName];
                 gotAll[modelName] = true;
                 if (modelName in asked) {
                     delete asked[modelName];
                 }
+                console.log('out : null (got all)');
+                if (got) return null;
                 return {};
             }
             // Lazy auto create indexes
             var keys = Lazy(filter).map(function (v, key) {
                 return [key, modelName + '.' + key];
-            }).toObject();
-            // getting indexes
-            var indexes = Lazy(filter).keys().map(function (key) {
-                return [key, getIndexFor(modelName, key)];
             }).toObject();
 
             var missing = Lazy(filter).map(function (values, fieldName) {
@@ -551,40 +775,69 @@ var findControllerAs = function (scope, findFunc) {
                 return x[1].length;
             }).toObject();
             var missingLen = Lazy(missing).size();
-            var filterLen = Lazy(filter).size();
+
             // if i have at least an element i have all results
             if (missingLen < filterLen) {
-                return null;
-            } else {
-                if (missingLen == 1) {
-                    Lazy(filter).each(function (value, key) {
-                        var uniques = Lazy(value).difference(indexes[key]).toArray();
-                        if (uniques.length) Array.prototype.push.apply(asked[modelName + '.' + key], value);
-                    });
-                } else {
-                    // conditional reference
-                    Lazy(missing).keys().each(function (fieldName) {
-                        fieldName = keys[fieldName];
-                        if (!(fieldName in conditionalAsked)) {
-                            conditionalAsked[fieldName] = new ListCacher();
+                console.log('out : null (at least one)');
+                // removing unused ListCachers
+                Lazy(filter).each(function (vals, field) {
+                    if (!(field in missing) && keys[field] in conditionalAsked) {
+                        for (var v in vals) {
+                            if (vals[v] in conditionalAsked[keys[field]]) {
+                                delete conditionalAsked[keys[field]][vals[v]];
+                            }
                         }
-                        var ret = {};
-                        var flt = Lazy(missing).keys().map(function (key) {
-                            return conditionalAsked[fieldName].filter(model, Lazy(missing).filter(function (v, k) {
-                                return k !== key;
-                            }).toObject());
-                        }).toArray();
-                        return Lazy({}).merge.apply(flt.concat([function (x, y) {
-                            return Lazy(x).union(y).toArray();
-                        }]));
-                        /*                    flt.forEach(function(x){
-                                                ret[x[0]] = x[1];
-                                            })
-                                            return ret;
-                        */
-                    });
-                }
+                    }
+                });
+                return null;
+            }
+            // single element management
+            if (missingLen == 1) {
+                // getting indexes
+                var indexes = Lazy(filter).keys().map(function (key) {
+                    return [key, getIndexFor(modelName, key)];
+                }).toObject();
+                Lazy(missing).each(function (value, key) {
+                    var uniques = Lazy(value).difference(indexes[key]).toArray();
+                    if (uniques.length) Array.prototype.push.apply(asked[modelName + '.' + key], value);
+                });
+                console.log('out : ' + JSON.stringify(missing));
                 return missing;
+                // multiple missing management
+            } else {
+                // creating lazely ListCachers
+                Lazy(missing).each(function (req, field) {
+                    var fieldName = keys[field];
+                    if (!(fieldName in conditionalAsked)) {
+                        conditionalAsked[fieldName] = {};
+                    }
+                    Lazy(req).map(function (x) {
+                        return x.toString();
+                    }).difference(Lazy(conditionalAsked[fieldName]).keys()).each(function (x) {
+                        console.log('new ' + fieldName + ' : ' + x);
+                        conditionalAsked[fieldName][x] = new ListCacher(Lazy);
+                    });
+                });
+                // get filter for each ListCacher for a filter without self
+                var l = Lazy({});
+                var m = Lazy(filter).map(function (req, field) {
+                    // getting filter without me
+                    var fieldName = keys[field];
+                    var aFilter = Lazy(filter).filter(function (v, k) {
+                        return k !== field;
+                    }).toObject();
+                    var filterSum = Lazy(req).map(function (x) {
+                        return conditionalAsked[fieldName][x].filter(model, aFilter);
+                    });
+                    return filterSum.filter(Boolean).reduce(function (x, y) {
+                        return Lazy(x).merge(y).toObject();
+                    });
+                }).toArray();
+                console.log(Lazy(m).map(JSON.stringify).toArray().join(' + '));
+                console.log('out : ' + JSON.stringify(l.merge.apply(l, m).toObject()));
+                var ret = l.merge.apply(l, m).toObject();
+                if (Lazy(ret).size() === 0) return null;
+                return ret;
             }
         };
 
@@ -681,20 +934,14 @@ var baseORM = function (options, extORM) {
     window.DB = IDB;
     var IDX = {}; // tableName -> Lazy(indexBy('id')) -> IDB[data]
     var REVIDX = {}; // tableName -> fieldName -> Lazy.groupBy() -> IDB[DATA]
-    var INDEX_UNLINKED = {};
-    var INDEX_M2M = {};
-    var GOT_ALL = Lazy([]);
-    var LISTCACHE = {};
     var builderHandlers = {};
     var builderHandlerUsed = {};
     var eventHandlers = {};
-    //    var MODEL_DATEFIELDS = {};
-    //    var MODEL_BOOLFIELDS = {};
     var permissionWaiting = {};
     var modelCache = {};
     var failedModels = {};
     var waitingConnections = {}; // actual connection who i'm waiting for
-    var listCache = new ListCacher();
+    var listCache = new ListCacher(Lazy);
     var linker = new AutoLinker(events, waitingConnections, IDB, this, listCache);
     window.ll = linker;
     window.lc = listCache;
@@ -1483,10 +1730,13 @@ var baseORM = function (options, extORM) {
         }
     };
     this.query = function (modelName, filter, together, callBack) {
-        var filterFunction = utils.makeFilter(filter);
-        var idx = getIndex(modelName);
-        this.fetch(modelName, filter, together, function (e) {
-            callBack(idx.filter(filterFunction).values().toArray());
+        var ths = this;
+        this.describe(modelName, function (model) {
+            var filterFunction = utils.makeFilter(model, filter);
+            var idx = getIndex(modelName);
+            ths.fetch(modelName, filter, together, function (e) {
+                callBack(idx.filter(filterFunction).values().toArray());
+            });
         });
     };
     this.delete = function (modelName, ids, callBack) {

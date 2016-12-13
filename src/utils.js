@@ -1,4 +1,5 @@
 'use strict';
+
 var cachedKeyIdx = 0;
 var cached = function(func, key){
     if (!key){    
@@ -274,6 +275,27 @@ var utils = {
     },
 
     makeFilter : function (model, filter) {
+        if (Lazy(filter).size() === 0){
+            return function(x){ return true };
+        }
+        var source = Lazy(filter).map(function(vals, field){
+            if (vals.constructor !== Array){
+                vals = [vals];
+            }
+            if (model.fields[field].type === 'reference') {
+                field = '_' + field;
+                vals = Lazy(vals).filter(Boolean).map(function(x){
+                    if (x.constructor !== Number){
+                        return x.id;
+                    } else 
+                        return x;
+                }).toArray();
+            }
+            return '(' +  Lazy(vals).map(function(x){
+                return '(x.' + field + ' === ' + x + ')';
+            }).join(' || ')  +')';
+        }).toArray().join(' && ');
+        return new Function('x','return ' + source);
         var nvFilter = Lazy(filter).map(function (v, k) {
             if (v.constructor == Array) {
                 v = Lazy(v).map(function (x) {

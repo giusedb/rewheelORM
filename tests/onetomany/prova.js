@@ -23,6 +23,7 @@ function renderFolder(folder){
 }
 
 function renderFolders() {
+    console.log('renderFolders');
     ul.children().remove();
     folders.map(renderFolder)
         .forEach(function(li){
