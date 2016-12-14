@@ -45,7 +45,7 @@ describe('listcache', function() {
             b : [2],
         };
         var filterOut = ls.filter(mockModel, filter);
-        assert.equal(JSON.stringify({b : [2], a : [4]}), JSON.stringify(filterOut));      
+        assert.deepEqual({b : [2], a : [4]}, filterOut);      
     });
     it('should return null', function(){
         var filter = {
@@ -61,7 +61,7 @@ describe('listcache', function() {
             b : [2,1],
         };
         var filterOut = ls.filter(mockModel, filter);
-        assert.equal(JSON.stringify({b : [1], a : [4]}), JSON.stringify(filterOut));      
+        assert.deepEqual({b : [1], a : [4]},filterOut);      
     });
     it('should return semidifference', function(){
         var filter = {
@@ -69,7 +69,7 @@ describe('listcache', function() {
             b : [2,1],
         };
         var filterOut = ls.filter(mockModel, filter);
-        assert.equal(JSON.stringify({b : [2,1], a : [5]}), JSON.stringify(filterOut));      
+        assert.deepEqual({b : [2,1], a : [5]},filterOut);      
     });
     it('should return semidifference', function(){
         var filter = {
@@ -77,7 +77,7 @@ describe('listcache', function() {
             b : [1,2,3,4,5],
         };
         var filterOut = ls.filter(mockModel, filter);
-        assert.equal(JSON.stringify({b : [3,4,5], a : [4]}), JSON.stringify(filterOut));      
+        assert.deepEqual({b : [3,4,5], a : [4]},filterOut);      
     });
     it('should return null', function(){
         var filter = {
