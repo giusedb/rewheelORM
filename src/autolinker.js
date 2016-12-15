@@ -1,5 +1,10 @@
 'use strict';
 
+var Lazy = require('lazy.js');
+var Toucher = require('./toucher.js');
+var VacuumCacher = require('./vacuumcacher.js');
+var ManyToManyRelation = require('./manytomany.js');
+
 function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
     var touch = new Toucher();
     var mainIndex = {};
@@ -122,3 +127,4 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
     setInterval(linkUnlinked,50);
 };
 
+var exports = module.exports = AutoLinker;

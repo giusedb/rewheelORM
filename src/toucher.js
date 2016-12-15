@@ -1,6 +1,6 @@
 'use strict';
 
-function Toucher(){
+var exports = module.exports = function (){
     var touched = false
     this.touch = function(){
         touched = true;

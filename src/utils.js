@@ -1,68 +1,18 @@
 'use strict';
 
+var Lazy = require('lazy.js');
+var utils = require('./utils.js');
+var handlers = require('./handlers.js');
+var sockjs = require('sockjs');
+var SockJS = sockjs.listen;
 var cachedKeyIdx = 0;
-var cached = function(func, key){
-    if (!key){    
-        key = '_' + cachedKeyIdx++;
-    }
-    function wrapper(){
-        if (!this[key]){
-            this[key] = func.call(this,[arguments]);
-        }
-        return this[key];
-    };
-    return wrapper;
-}
 
-function xdr(url, data, callback, errback, application,token) {
-    var req;
-    if (data && data.constructor === Object){
-        data = JSON.stringify(data);
-    }
-    
-    if(XMLHttpRequest) {
-        req = new XMLHttpRequest();
-
-        if('withCredentials' in req) {
-            req.open('POST', url, true);
-            
-            req.onerror = errback;
-            req.onreadystatechange = function() {
-                if (req.readyState === 4) {
-                    if (req.status >= 200 && req.status < 400) {
-                        try{
-                            var responseText = JSON.parse(req.responseText);
-                        } catch (a){
-                            var responseText = req.responseText;
-                        }
-                        callback(responseText,req.statusText, req);
-                    } else {
-                        errback(new Error('Response returned with non-OK status'));
-                    }
-                }
-            };
-            if (application)
-                req.setRequestHeader('application', application);
-            if (token)
-                req.setRequestHeader('token', token);
-            req.setRequestHeader('Accept','application/json');
-            req.send(data);
-        }
-    } else if(XDomainRequest) {
-        req = new XDomainRequest();
-        req.open('POST', url);
-        req.onerror = errback;
-        req.onload = function() {
-            callback(req.responseText,req.statusText, req);
-        };
-        if (application)
-            req.setRequestHeader('application', application);
-        if (token)
-            req.setRequestHeader('token', token);
-        req.send(data);
-    } else {
-        errback(new Error('CORS not supported'));
-    }
+var isNode = false;
+try {
+    localStorage['test'] = 1
+} catch(e) {
+    var localStorage = {};
+    isNode = true;
 }
 
 var $POST = function(url, data, callBack, errorBack,headers){
@@ -87,7 +37,7 @@ function reWheelConnection(endPoint, getLogin){
     // main 
     var self = this;
     this.getLogin = getLogin;
-    this.events = new NamedEventManager()
+    this.events = new handlers.NamedEventManager()
     this.$POST = $POST.bind(this);
     this.options = {endPoint : endPoint};
     this.on = this.events.on.bind(this);
@@ -150,7 +100,7 @@ reWheelConnection.prototype.$post = function(url, data,callBack){
         var headers = null;
     }
 
-    var promise = xdr(this.options.endPoint + url, data,function(responseData, status, xhr){
+    var promise = utils.xdr(this.options.endPoint + url, data,function(responseData, status, xhr){
             ths.events.emit('http-response', responseData, xhr.status, url, data);
             ths.events.emit('http-response-' + xhr.status, responseData, url, data);
             if (callBack) { callBack( responseData )};
@@ -174,7 +124,13 @@ reWheelConnection.prototype.login = function(username, password){
         headers = { token : this.options.token };
     }
     return new Promise(function(accept,reject){
-        $.ajax({
+        utils.xdr(url,{ username: username, password : password}, function(status){
+                for (var x in status){ connection.options[x] = status[x]; }
+                accept(status);
+        }, function(xhr,data, status){
+            reject(xhr.responseJSON);
+        },null,null, true);
+/*        $.ajax({
 //            headers : headers,
             url : url,
             data : { username: username, password : password},
@@ -192,6 +148,7 @@ reWheelConnection.prototype.login = function(username, password){
             }
             
         })
+*/
     });
 };
 reWheelConnection.prototype.connect = function(callBack){
@@ -234,22 +191,75 @@ var utils = {
         return (new Function("return function (call) { return function " + name +
             " () { return call(this, arguments) }; };")())(Function.apply.bind(fn));
     },
-
+    cached : function(func, key){
+        if (!key){    
+            key = '_' + cachedKeyIdx++;
+        }
+        function wrapper(){
+            if (!this[key]){
+                this[key] = func.call(this,[arguments]);
+            }
+            return this[key];
+        };
+        return wrapper;
+    },
+    $POST : $POST,
+    reWheelConnection: reWheelConnection,
     log: function(){ 
         console.log(arguments);
     },
-    
-    setToParent : function (scope,name,value){
-        if (name in scope){
-            var scp = scope;
-            var child = scp;
-            while (scp && (name in scp)){
-                child = scp;
-                scp = scp.$parent;
+
+    xdr: function (url, data, callback, errback, application,token) {
+        /**
+         * Make an HTTP Request and return its promise.
+         */
+        var req;
+        if (data && data.constructor === Object){
+            data = JSON.stringify(data);
+        }
+        
+        if(XMLHttpRequest) {
+            req = new XMLHttpRequest();
+
+            if('withCredentials' in req) {
+                req.open('POST', url, true);
+                
+                req.onerror = errback;
+                req.onreadystatechange = function() {
+                    if (req.readyState === 4) {
+                        if (req.status >= 200 && req.status < 400) {
+                            try{
+                                var responseText = JSON.parse(req.responseText);
+                            } catch (a){
+                                var responseText = req.responseText;
+                            }
+                            callback(responseText,req.statusText, req);
+                        } else {
+                            errback(new Error('Response returned with non-OK status'));
+                        }
+                    }
+                };
+                if (application)
+                    req.setRequestHeader('application', application);
+                if (token)
+                    req.setRequestHeader('token', token);
+                req.setRequestHeader('Accept','application/json');
+                req.send(data);
             }
-            if (name in child){
-                child[name] = value;
-            }
+        } else if(XDomainRequest) {
+            req = new XDomainRequest();
+            req.open('POST', url);
+            req.onerror = errback;
+            req.onload = function() {
+                callback(req.responseText,req.statusText, req);
+            };
+            if (application)
+                req.setRequestHeader('application', application);
+            if (token)
+                req.setRequestHeader('token', token);
+            req.send(data);
+        } else {
+            errback(new Error('CORS not supported'));
         }
     },
     
@@ -258,6 +268,9 @@ var utils = {
     },
 
     hash : function(str){
+        /**
+         * Hashed function
+         */
         str = str.toString();
         var ret = 1;
         for (var x = 0;x<str.length;x++){
@@ -266,15 +279,11 @@ var utils = {
         return (ret % 34958374957).toString();
     },
 
-    makeListCacheKey : function(filter, model){
-        return JSON.stringify(Lazy(filter).map(function(v,k){
-            return [k,Lazy(v).map(function(x){
-                return x + '';
-            }).sort().toArray()]
-        }).toObject());
-    },
-
-    makeFilter : function (model, filter) {
+    makeFilter : function (model, filter, unifier) {
+        /**
+         * Make filter for Array.filter function as an and of or
+         */
+        if (!unifier) { unifier = ' && ';}
         if (Lazy(filter).size() === 0){
             return function(x){ return true };
         }
@@ -294,31 +303,13 @@ var utils = {
             return '(' +  Lazy(vals).map(function(x){
                 return '(x.' + field + ' === ' + x + ')';
             }).join(' || ')  +')';
-        }).toArray().join(' && ');
-        return new Function('x','return ' + source);
-        var nvFilter = Lazy(filter).map(function (v, k) {
-            if (v.constructor == Array) {
-                v = Lazy(v).map(function (x) {
-                    return [x, 1];
-                }).toObject();
-            } else if (isFinite(v) || (typeof(v) == 'Number')) {
-                var o = {};
-                o[v] = 1;
-                v = o;
-            }
-            if (Lazy(model.references).contains(k)) {
-                k = '_' + k;
-            }
-            return [k, v];
-        }).toObject();
-        return function (x) {
-            return Lazy(nvFilter).all(function (v, k) {
-                return x[k] in v
-            });
-        }
+        }).toArray().join(unifier);
     },
 
     sameAs : function (x, y) {
+        /**
+         * Deep equal
+         */
         for (var k in x) {
             if (y[k] != x[k]) {
                 return false;
@@ -329,6 +320,9 @@ var utils = {
 
 
     wsConnect : function (options) {
+        /**
+         * Connects a websocket with reWheel connection
+         */
         if(!options){
             return;
         }
@@ -337,11 +331,11 @@ var utils = {
         // registering all event handlers
 
         this.handlers = {
-            wizard : new Handler(),
-            onConnection : new Handler(),
-            onDisconnection : new Handler(),
-            onMessageJson : new Handler(),
-            onMessageText : new Handler()
+            wizard : new handlers.Handler(),
+            onConnection : new handlers.Handler(),
+            onDisconnection : new handlers.Handler(),
+            onMessageJson : new handlers.Handler(),
+            onMessageText : new handlers.Handler()
         }
         this.onWizard = this.handlers.wizard.addHandler.bind(this.handlers.wizard);
         this.onConnect = this.handlers.onConnection.addHandler.bind(this.handlers.onConnection);
@@ -381,6 +375,9 @@ var utils = {
     },
 
     pluralize : function(str, model){
+        /**
+         * Lexically returns english plural form
+         */
         return str + 's';
     },
 
@@ -392,6 +389,9 @@ var utils = {
     },
 
     cleanStorage : function(){
+        /**
+         * Clean localStorage object
+         */
         Lazy(localStorage).keys().each(function(k){
             delete localStorage[k];
         })
@@ -413,43 +413,43 @@ var utils = {
 
     bool: Boolean,
 
-    noop : function(){}
+    noop : function(){},
+
+    tzOffset: new Date().getTimezoneOffset() * 60000
 };
 
-var tzOffset = new Date().getTimezoneOffset() * 60000;
 
-var findControllerScope = function (scope) {
-    var _scope = scope;
-    var _prev = undefined;
-    var f = true;
-    var myI = Lazy(Lazy(scope).find(function (v, k) {
-        return v && v.constructor.$inject
-    }).constructor.$inject);
-    while (_scope) {
-        f = false;
-        var found = Lazy(_scope).find(function (v, k) {
-            return v && v.constructor.$inject
+if (isNode){
+    utils.xdr = function (url, data, callback, errback, application,token,form){
+        var request = require('request');
+        var headers = {};
+        if (application) {
+            headers.application = application;
+        }
+        if (token) {
+            headers.token = token;
+        }
+        var options = {
+            url : url,
+            method : 'POST',
+            headers : headers
+        };
+        if (data){
+            if (form)
+                options.form = data;
+            else {
+                options.json = data;
+            }
+        }
+        var res = request(options, function(error, response, body){
+            try { 
+                body = JSON.parse(body);
+            } catch (e) { }
+            callback(body, 'Ok', res);
+        }, function(body){
+            errorBack(body, 'Boh', res);
         });
-        if (found) {
-            f = myI.difference(found.constructor.$inject).size() == 0;
-        }
-        if (f) {
-            _prev = _scope;
-            _scope = _scope.$parent;
-        } else {
-            return _prev || scope.$parent;
-        }
     }
-    return scope.$parent;
-};
+}
 
-var findControllerAs = function (scope, findFunc) {
-    var _scope = scope;
-    while (_scope) {
-        var is = findFunc(_scope);
-        if (is) {
-            return _scope;
-        }
-        _scope = _scope.$parent;
-    }
-};
+var exports = module.exports = utils;

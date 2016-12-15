@@ -19,16 +19,16 @@ var deps = [
 gulp.task('default', function() {
     gulp.src(files)
         .pipe(babel())
-//        .pipe(browserify())
         .pipe(concat('rwtORM.js'))
+        .pipe(browserify())
         .pipe(gulp.dest('dist/'))
 });
 
 gulp.task('build', function() {
     gulp.src(files)
         .pipe(babel()).on('error',util.log)
+        .pipe(browserify())
         .pipe(concat('rwtORM.min.js'))
-//        .pipe(browserify())
         .pipe(uglify().on('error',util.log))
         .pipe(gulp.dest('dist'))
 });

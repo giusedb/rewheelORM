@@ -2,19 +2,29 @@
 
 // TODO defining Set polyfil
 
+try {
+    localStorage['test'] = 1
+} catch(e) {
+    var localStorage = {};
+}
+
+var utils = require('./utils.js');
+var Lazy = require('lazy.js');
+var ListCacher = require('./listcacher.js');
+var AutoLinker = require('./autolinker.js');
+var cached = require('./cacher.js');
+var cachedPropertyByEvents = cached.cachedPropertyByEvents;
 function ValidationError(data){
     this.resource = data._resource;
     this.formIdx = data.formIdx;
     this.fields = data.errors;
 }
-
-
 var baseORM = function(options, extORM){
     
     // creating rewheel connection
     if (options.constructor === String){
         var connection = new reWheelConnection(options);
-    } else if (options.constructor === reWheelConnection){
+    } else if (options.constructor === utils.reWheelConnection){
         var connection = options;
     }
     this.connection = connection;
@@ -48,7 +58,6 @@ var baseORM = function(options, extORM){
     // initialization
     var W2PRESOURCE = this;
     var IDB = {auth_group : Lazy({})}; // tableName -> data as Array
-    window.DB = IDB;
     var IDX = {}; // tableName -> Lazy(indexBy('id')) -> IDB[data]
     var REVIDX = {}; // tableName -> fieldName -> Lazy.groupBy() -> IDB[DATA]
     var builderHandlers = {};
@@ -60,9 +69,9 @@ var baseORM = function(options, extORM){
     var waitingConnections = {} // actual connection who i'm waiting for
     var listCache = new ListCacher(Lazy);
     var linker = new AutoLinker(events,waitingConnections,IDB, this, listCache);
-    window.ll = linker;
+/*    window.ll = linker;
     window.lc = listCache;
-
+*/
     this.validationEvent = events.on('error-json-513', function(data, url, sentData, xhr){
         if (currentContext.savingErrorHanlder){
             currentContext.savingErrorHanlder(new ValidationError(data));
@@ -158,7 +167,7 @@ var baseORM = function(options, extORM){
         // datefield conversion
         funcString += fields.map(function (x,k) {
             if ((x.type == 'date') || (x.type == 'datetime')){
-                return 'this.' + k + ' = row.' + k + '?new Date(row.' + k + ' * 1000 - tzOffset):null;\n'; 
+                return 'this.' + k + ' = row.' + k + '?new Date(row.' + k + ' * 1000 - ' + utils.tzOffset + '):null;\n'; 
             } else if (x.type == 'boolean') {
                 return 'this.' + k + ' = (row.' + k + ' === "T") || (row.' + k + ' === true);\n';
             } else {
@@ -957,4 +966,9 @@ reWheelORM.prototype.delete = function (modelName, ids){
             reject(e);
         }
     })
+};
+
+var exports = module.exports = {
+    ORM : reWheelORM,
+    connection : utils.reWheelConnection
 };

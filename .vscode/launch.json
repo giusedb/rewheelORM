@@ -38,6 +38,13 @@
             "cwd": "${workspaceRoot}",
             "runtimeExecutable": null,
             "env": { "NODE_ENV": "testing"}
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Start with node",
+            "program": "${workspaceRoot}/start.js",
+            "cwd": "${workspaceRoot}"
         }
     ]
 }

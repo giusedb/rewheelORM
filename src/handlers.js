@@ -1,4 +1,7 @@
 'use strict';
+var Lazy = require('lazy.js');
+var exports = module.exports = {}
+
 function Handler(){
     this.handlers = [];
     this.strHandlers = {};
@@ -69,3 +72,5 @@ function NamedEventManager (){
     };
 }
 
+exports.Handler = Handler;
+exports.NamedEventManager = NamedEventManager
