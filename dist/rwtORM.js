@@ -742,103 +742,174 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache) {
         var gotAll = {};
         var asked = {}; // map of array
         var conditionalAsked = {};
-        this.filter = function (model, filter) {
-            console.log('------------------\nfilter : ' + JSON.stringify(filter));
-            var getIndexFor = this.getIndexFor;
-            var modelName = model.modelName;
-
-            // if all objects were fetched from server you have not to fetch anything
-            if (modelName in gotAll) {
-                console.log('out : null');
-                return null;
-            }
-            // if you fetch all objects from server, this model has to be marked as got all;
-            var filterLen = Lazy(filter).size();
-            if (filterLen === 0) {
-                var got = gotAll[modelName];
-                gotAll[modelName] = true;
-                if (modelName in asked) {
-                    delete asked[modelName];
+        var cartesianProduct1 = function (x, y, isArray) {
+            var ret = [];
+            if (isArray) {
+                for (var a in x) {
+                    for (var b in y) {
+                        ret.push(Lazy([x[a], y[b]]).flatten().toArray());
+                    }
                 }
-                console.log('out : null (got all)');
-                if (got) return null;
-                return {};
+            } else {
+                for (var a in x) {
+                    for (var b in y) {
+                        ret.push([x[a], y[b]]);
+                    }
+                }
             }
+            return ret;
+        };
+        var cartesianProduct = function (arr) {
+            var isArray = false;
+            var ret = arr[0];
+            for (var x = 1; x < arr.length; ++x) {
+                ret = cartesianProduct1(ret, arr[x], isArray);
+                isArray = true;
+            }
+            return ret;
+        };
+        var explodeFilter = function (filter) {
+            var product = cartesianProduct(Lazy(filter).values().toArray());
+            var keys = Lazy(filter).keys().toArray();
+            return product.map(function (x) {
+                var r = {};
+                keys.forEach(function (a, n) {
+                    r[a] = x[n];
+                });
+                return r;
+            });
+        };
+        var makeFilter = function (filter, unionAttr) {
+            /**
+             * Creates a filter function for super set filter
+             */
+            if (!unionAttr) {
+                unionAttr = ' && ';
+            }
+            var partial = [];
+            for (var key in filter) {
+                var vals = filter[key];
+                if (Array.isArray(vals)) {
+                    partial.push(vals.map(function (x) {
+                        return '(x.' + key + ' === ' + x + ')';
+                    }).join(' || '));
+                } else {
+                    partial.push('(x.' + key + ' === ' + vals + ')');
+                }
+            }
+            return new Function("x", 'return ' + partial.join(unionAttr));
+        };
+        var filterSingle = function (modelName, filter, testOnly) {
             // Lazy auto create indexes
+            var getIndexFor = this.getIndexFor;
             var keys = Lazy(filter).map(function (v, key) {
                 return [key, modelName + '.' + key];
             }).toObject();
-
-            var missing = Lazy(filter).map(function (values, fieldName) {
-                return [fieldName, Lazy(values).difference(asked[keys[fieldName]]).unique().toArray()];
-            }).filter(function (x) {
-                return x[1].length;
+            var indexes = Lazy(filter).keys().map(function (key) {
+                return [key, getIndexFor(modelName, key)];
             }).toObject();
-            var missingLen = Lazy(missing).size();
+            // fake for (it will cycle once)
+            for (var x in filter) {
+                // get asked index and check presence
+                var difference = Lazy(filter[x]).difference(indexes[x]).toArray();
+                if (difference.length) {
+                    // generate new filter
+                    var ret = Lazy([[x, difference]]).toObject();
+                    // remember asked
+                    if (!testOnly) Array.prototype.push.apply(indexes[x], difference);
+                    // update conditionals
+                    this.conditionalClean(ret);
+                    console.log('single filter : ' + JSON.stringify(filter) + '\nOut :' + JSON.stringify(ret));
+                    return ret;
+                } else {
+                    console.log('single filter : ' + JSON.stringify(filter) + '\nOut : null');
+                    return null;
+                }
+            }
+        };
 
-            // if i have at least an element i have all results
-            if (missingLen < filterLen) {
-                console.log('out : null (at least one)');
-                // removing unused ListCachers
-                Lazy(filter).each(function (vals, field) {
-                    if (!(field in missing) && keys[field] in conditionalAsked) {
-                        for (var v in vals) {
-                            if (vals[v] in conditionalAsked[keys[field]]) {
-                                delete conditionalAsked[keys[field]][vals[v]];
-                            }
+        this.conditionalClean = function (model, filter) {
+            /**
+             * clean conditionalAsked
+             */
+            // lazy create conditional asked index
+            if (!(model.name in conditionalAsked)) {
+                conditionalAsked[model.name] = [];
+            };
+            var index = conditionalAsked[model.name];
+        };
+
+        this.filter = function (model, filter) {
+            console.log('------------------\nfilter : ' + JSON.stringify(filter));
+            var modelName = model.modelName;
+
+            // if you fetch all objects from server, this model has to be marked as got all;
+            var filterLen = Lazy(filter).size();
+            switch (filterLen) {
+                case 0:
+                    {
+                        // return null or all
+                        var got = gotAll[modelName];
+                        gotAll[modelName] = true;
+                        if (modelName in asked) {
+                            delete asked[modelName];
                         }
+                        console.log('out : null (got all)');
+                        // conditional clean
+                        if (modelName in conditionalAsked) {
+                            delete conditionalAsked[modelName];
+                        }
+                        if (got) return null;
+                        return {};
                     }
-                });
+                case 1:
+                    {
+                        return filterSingle.call(this, modelName, filter);
+                    }
+            }
+            var ths = this;
+            var single = Lazy(filter).keys().some(function (key) {
+                var f = {};
+                f[key] = filter[key];
+                return filterSingle.call(ths, modelName, f, true) == null;
+            });
+            if (single) {
                 return null;
             }
-            // single element management
-            if (missingLen == 1) {
-                // getting indexes
-                var indexes = Lazy(filter).keys().map(function (key) {
-                    return [key, getIndexFor(modelName, key)];
-                }).toObject();
-                Lazy(missing).each(function (value, key) {
-                    var uniques = Lazy(value).difference(indexes[key]).toArray();
-                    if (uniques.length) Array.prototype.push.apply(asked[modelName + '.' + key], value);
-                });
-                console.log('out : ' + JSON.stringify(missing));
-                return missing;
-                // multiple missing management
-            } else {
-                // creating lazely ListCachers
-                Lazy(missing).each(function (req, field) {
-                    var fieldName = keys[field];
-                    if (!(fieldName in conditionalAsked)) {
-                        conditionalAsked[fieldName] = {};
-                    }
-                    Lazy(req).map(function (x) {
-                        return x.toString();
-                    }).difference(Lazy(conditionalAsked[fieldName]).keys()).each(function (x) {
-                        console.log('new ' + fieldName + ' : ' + x);
-                        conditionalAsked[fieldName][x] = new ListCacher(Lazy);
-                    });
-                });
-                // get filter for each ListCacher for a filter without self
-                var l = Lazy({});
-                var m = Lazy(filter).map(function (req, field) {
-                    // getting filter without me
-                    var fieldName = keys[field];
-                    var aFilter = Lazy(filter).filter(function (v, k) {
-                        return k !== field;
-                    }).toObject();
-                    var filterSum = Lazy(req).map(function (x) {
-                        return conditionalAsked[fieldName][x].filter(model, aFilter);
-                    });
-                    return filterSum.filter(Boolean).reduce(function (x, y) {
-                        return Lazy(x).merge(y).toObject();
-                    });
-                }).toArray();
-                console.log(Lazy(m).map(JSON.stringify).toArray().join(' + '));
-                console.log('out : ' + JSON.stringify(l.merge.apply(l, m).toObject()));
-                var ret = l.merge.apply(l, m).toObject();
-                if (Lazy(ret).size() === 0) return null;
-                return ret;
+            // lazy create conditionalAsked
+            if (!(modelName in conditionalAsked)) {
+                conditionalAsked[modelName] = [];
             }
+            // explode filter
+            var exploded = explodeFilter(filter);
+            // collect partials
+            var partials = conditionalAsked[modelName].filter(makeFilter(filter, ' || '));
+            // collect missings (exploded - partials)
+            if (partials.length) {
+                var bad = [];
+                // partial difference
+                for (var x in partials) {
+                    bad.push.apply(bad, exploded.filter(makeFilter(partials[x])));
+                }
+                console.log('exploded - partial : ' + JSON.stringify(bad));
+                var missings = Lazy(exploded).difference(bad).toArray();
+            } else {
+                var missings = exploded;
+            }
+
+            // filter partials
+            if (missings.length) {
+                conditionalAsked[modelName].push.apply(conditionalAsked[modelName], missings);
+                // aggregate missings
+                var missings = Lazy(filter).keys().map(function (key) {
+                    var ret = Lazy(missings).pluck(key).unique().toArray();
+                    return [key, ret.length ? ret : filter[key]];
+                }).toObject();
+                console.log('out : ' + JSON.stringify(missings));
+                return missings;
+            }
+            // clean conditional
+            return null;
         };
 
         this.getIndexFor = function (modelName, fieldName) {

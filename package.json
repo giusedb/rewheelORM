@@ -1,5 +1,43 @@
 {
-    "scripts": {
-        "test": "mocha"
-    }
+  "version": "0.1.0",
+  "name": "rwt-orm",
+  "author": {
+    "name": "Giuseppe Di Bona (demalogic)",
+    "email": "giuseppe@demalogic.it",
+    "url": "http://www.demalogic.it"
+  },
+  "bugs": {
+    "email": "giusedb@gmail.com",
+    "url": "https://github.com/giusedb/rewheelORM/issues"
+  },
+  "badges": [
+    "rewheel",
+    "rwt",
+    "orm"
+  ],
+  "license": "BSD-3-Clause",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "description": "rewheel technology ORM based service",
+  "main": "dist/rewheelORM.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/giusedb/rewheelORM.git"
+  },
+  "dependencies": {
+    "lazy.js": ">=0.4.2"
+  },
+  "scripts": {
+    "test": "mocha"
+  },
+  "devDependencies": {
+    "gulp": "^3.9.1",
+    "gulp-babel": "^6.1.2",
+    "gulp-browserify": "^0.5.1",
+    "gulp-concat": "^2.6.1",
+    "gulp-uglify": "^2.0.0",
+    "mocha": "^3.2.0"
+  }
 }
