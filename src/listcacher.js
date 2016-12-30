@@ -1,10 +1,9 @@
 "use strict";
 
-var Lazy = require('lazy.js');
-var ListCacher = function(){
+function ListCacher(){
     var gotAll = {};
     var asked = {}; // map of array
-    var conditionalAsked = {};
+    var compositeAsked = {};
     var cartesianProduct1 = function(x,y,isArray){
         var ret = [];
         if (isArray) {
@@ -43,26 +42,9 @@ var ListCacher = function(){
         });
         
     };
-    var makeFilter = function(filter, unionAttr) {
-        /**
-         * Creates a filter function for super set filter
-         */
-        if (!unionAttr) { unionAttr = ' && '}
-        var partial = [];
-        for (var key in filter){
-            var vals = filter[key];
-            if (Array.isArray(vals)){
-                partial.push(vals.map(function(x){
-                    return '(x.' + key + ' === ' + x +')';
-                }).join(' || '))
-            } else {
-                partial.push('(x.' + key + ' === ' + vals +')');
-            }
-        }
-        return new Function("x", 'return ' + partial.join(unionAttr))
-    }
-    var filterSingle = function(modelName, filter, testOnly){
+    var filterSingle = function(model, filter, testOnly){
         // Lazy auto create indexes
+        var modelName = model.modelName;
         var getIndexFor = this.getIndexFor;
         var keys = Lazy(filter).map(function(v,key){ return [key, modelName + '.' + key]; }).toObject();
         var indexes = Lazy(filter).keys().map(function(key){ return [key, getIndexFor(modelName, key)]}).toObject(); 
@@ -76,28 +58,30 @@ var ListCacher = function(){
                 // remember asked
                 if (!testOnly)
                     Array.prototype.push.apply(indexes[x], difference);
-                // update conditionals
-                this.conditionalClean(ret);
-                console.log('single filter : ' + JSON.stringify(filter) + '\nOut :' + JSON.stringify(ret));
+//                console.log('single filter : ' + JSON.stringify(filter) + '\nOut :' + JSON.stringify(ret));
                 return ret;
             } else {
-                console.log('single filter : ' + JSON.stringify(filter) + '\nOut : null');
+//                console.log('single filter : ' + JSON.stringify(filter) + '\nOut : null');
                 return null;
             }
         }
     };
 
-    this.conditionalClean = function(model,filter){
+    var cleanComposites = function(model,filter){
         /**
-         * clean conditionalAsked
+         * clean compositeAsked
          */
         // lazy create conditional asked index
-        if (!(model.name in conditionalAsked)) { conditionalAsked[model.name] = [] };
-        var index = conditionalAsked[model.name];
+        if (!(model.name in compositeAsked)) { compositeAsked[model.name] = [] };
+        var index = compositeAsked[model.name];
+        // search for all elements who have same partial
+        var filterLen = Lazy(filter).size();
+        var items = index.filter(utils.makeFilter(model, filter, ' && ',true)).filter(function(item){ Lazy(item).size() > filterLen });
+//        console.log('deleting :' + JSON.stringify(items));
     };
 
     this.filter = function(model, filter){
-        console.log('------------------\nfilter : ' + JSON.stringify(filter));
+//        console.log('------------------\nfilter : ' + JSON.stringify(filter));
         var modelName = model.modelName;
 
         // if you fetch all objects from server, this model has to be marked as got all;
@@ -110,40 +94,42 @@ var ListCacher = function(){
                 if (modelName in asked){
                     delete asked[modelName];
                 }
-                console.log('out : null (got all)');
+//                console.log('out : null (got all)');
                 // conditional clean
-                if (modelName in conditionalAsked){ 
-                    delete conditionalAsked[modelName];
+                if (modelName in compositeAsked){ 
+                    delete compositeAsked[modelName];
                 }
                 if (got)
                     return null;
                 return {};
             }
             case 1 : {
-                return filterSingle.call(this, modelName, filter);
+                var ret = filterSingle.call(this, model, filter);
+                cleanComposites.call(this, model, filter);
+                return ret;
             }
         }
         var ths = this;
         var single = Lazy(filter).keys().some(function(key) {
             var f = {};
             f[key] = filter[key];
-            return filterSingle.call(ths, modelName, f, true) == null;
+            return filterSingle.call(ths, model, f, true) == null;
         });
         if (single) { return null }
-        // lazy create conditionalAsked
-        if (!(modelName in conditionalAsked)){ conditionalAsked[modelName] = []; }
+        // lazy create compositeAsked
+        if (!(modelName in compositeAsked)){ compositeAsked[modelName] = []; }
         // explode filter
         var exploded = explodeFilter(filter);
         // collect partials
-        var partials = conditionalAsked[modelName].filter(makeFilter(filter, ' || '));
+        var partials = compositeAsked[modelName].filter(utils.makeFilter(model, filter, ' || ',true));
         // collect missings (exploded - partials)
         if (partials.length){
             var bad  = [];
             // partial difference
             for (var x in partials){
-                bad.push.apply(bad,exploded.filter(makeFilter(partials[x])));
+                bad.push.apply(bad,exploded.filter(utils.makeFilter(model, partials[x],' && ', true)));
             }
-            console.log('exploded - partial : ' + JSON.stringify(bad));
+//            console.log('exploded - partial : ' + JSON.stringify(bad));
             var missings = Lazy(exploded).difference(bad).toArray();
         } else {
             var missings = exploded;
@@ -151,16 +137,17 @@ var ListCacher = function(){
 
         // filter partials
         if (missings.length){
-            conditionalAsked[modelName].push.apply(conditionalAsked[modelName],missings);
+            compositeAsked[modelName].push.apply(compositeAsked[modelName],missings);
             // aggregate missings
             var missings = Lazy(filter).keys().map(function(key){
                 var ret = Lazy(missings).pluck(key).unique().toArray();
                 return [key, ret.length?ret:filter[key]];
             }).toObject();
-            console.log('out : ' + JSON.stringify(missings));
+//            console.log('out : ' + JSON.stringify(missings));
+            // clean conditional
+            cleanComposites(model, missings);
             return missings;
         }
-        // clean conditional
         return null;
     };
 
@@ -172,4 +159,3 @@ var ListCacher = function(){
         return asked[indexName];
     }
 };
-var exports = module.exports = ListCacher;

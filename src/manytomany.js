@@ -1,7 +1,5 @@
 'use strict';
 
-var utils = require('./utils.js');
-
 function ManyToManyRelation(relation,m2m){
     var items = [];
     this.add = items.push.bind(items);
@@ -12,19 +10,21 @@ function ManyToManyRelation(relation,m2m){
         }
     }
 
-    this['get' + utils.capitalize(relation.indexName.split('/')[0])] = function(id){
+    this.get0 = function(id){
         m2m[1].ask(id);
         return Lazy(items).filter(function(x){
             return x[0] === id;
         }).pluck("1").toArray();
     };
 
-    this['get' + utils.capitalize(relation.indexName.split('/')[1])] = function(id){
+    this.get1 = function(id){
         m2m[0].ask(id);
         return Lazy(items).filter(function(x){
             return x[1] === id;
         }).pluck("0").toArray();
     };
+    this['get' + utils.capitalize(relation.indexName.split('/')[1])] = this.get1;
+    this['get' + utils.capitalize(relation.indexName.split('/')[0])] = this.get0;
 
     this.del = function(item){
         var l = items.length;
@@ -41,4 +41,3 @@ function ManyToManyRelation(relation,m2m){
         console.log('deleting ', item);
     };
 }
-exports = module.exports = ManyToManyRelation;

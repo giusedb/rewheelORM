@@ -1,8 +1,5 @@
 'use strict';
 
-var Lazy = require('lazy.js');
-var exports = module.exports = {}
-
 function cachedPropertyByEvents(proto, propertyName,getter, setter){
     var events = Array.prototype.slice.call(arguments,4);
     var result = {};
@@ -32,4 +29,3 @@ function cachedPropertyByEvents(proto, propertyName,getter, setter){
     }
     Object.defineProperty(proto, propertyName,propertyDef);
 }
-exports.cachedPropertyByEvents = cachedPropertyByEvents;

@@ -21,7 +21,7 @@
     "dist"
   ],
   "description": "rewheel technology ORM based service",
-  "main": "dist/rewheelORM.js",
+  "main": "dist/rwt.nd.js",
   "repository": {
     "type": "git",
     "url": "https://github.com/giusedb/rewheelORM.git"
@@ -31,7 +31,7 @@
     "sockjs": "^0.3.18"
   },
   "scripts": {
-    "test": "mocha"
+    "test": "node_modules/mocha/bin/mocha"
   },
   "devDependencies": {
     "browserify": "^13.1.1",
@@ -39,7 +39,10 @@
     "gulp-babel": "^6.1.2",
     "gulp-browserify": "^0.5.1",
     "gulp-concat": "^2.6.1",
+    "gulp-rename": "^1.2.2",
+    "gulp-sourcemaps": "^1.9.1",
     "gulp-uglify": "^2.0.0",
+    "gulp-wrap-js": "^0.4.1",
     "mocha": "^3.2.0",
     "request": "^2.79.0",
     "xhr2": "^0.1.3"

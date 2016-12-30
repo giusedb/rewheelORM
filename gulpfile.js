@@ -1,35 +1,57 @@
 var gulp = require('gulp');
+var rename = require('gulp-rename');
 var concat = require('gulp-concat');
-var browserify = require('gulp-browserify');
 var uglify = require('gulp-uglify');
 var util = require('gulp-util');
-var babel = require('gulp-babel')
+var babel = require('gulp-babel');
+var wrap = require('gulp-wrap-js');
+var maps = require('gulp-sourcemaps')
+var Lazy = require('lazy.js');
 
-var filesNames = ["handlers.js", "utils.js", "toucher.js","vacuumcacher.js" , "autolinker.js", "listcacher.js", "cacher.js", "orm.js", ];
-var files = filesNames.map(function(x) {
-    return "src/" + x;
-});
+//var filesNames = ["handlers.js", "utils.js", "toucher.js","vacuumcacher.js" , "autolinker.js", "listcacher.js", "cacher.js", "orm.js", "rwt.js"];
 
-var deps = [
-    "jquery/dist/jquery.js",
-    "lazy.js/lazy.js",
-    "sockjs/sock.js"
-].map(function(x){ return "bower_components/" + x });
+var libs = ['sockjs', 'request'].map(require.resolve);
+libs.push(require.resolve('lazy.js').split('/').slice(0,-1).join('/') + '/lazy.js')
+console.log(libs);
+var files = [
+    "handlers",
+    "utils",
+    "toucher",
+    "vacuumcacher",
+    "autolinker",
+    "listcacher",
+    "manytomany",
+    "cacher",
+    "orm",
+];
 
 gulp.task('default', function() {
-    gulp.src(files)
-        .pipe(babel())
-        .pipe(concat('rwtORM.js'))
-        .pipe(browserify())
-        .pipe(gulp.dest('dist/'))
+    return gulp.src(files.map((x) => './src/' + x + '.js'))
+        .pipe(maps.init())
+        .pipe(concat('rwt.js'))
+        .pipe(wrap("(function (root, Lazy, SockJS) {'use strict'; var isNode = false; %= body %;root.rwt = reWheelORM})(window, Lazy, SockJS)"))
+        .pipe(maps.write())
+        .pipe(gulp.dest('./dist'))
+        .on('error',util.log);
 });
 
-gulp.task('build', function() {
-    gulp.src(files)
-        .pipe(babel()).on('error',util.log)
-        .pipe(browserify())
-        .pipe(concat('rwtORM.min.js'))
+gulp.task('minified', function() {
+    return gulp.src(files.map((x) => './src/' + x + '.js'))
+        .pipe(maps.init())
+        .pipe(concat('rwt.min.js'))
+        .pipe(wrap("(function (root, Lazy, SockJS) {'use strict'; var isNode = false; %= body %;root.rwt = reWheelORM})(window, Lazy, SockJS)"))
         .pipe(uglify().on('error',util.log))
-        .pipe(gulp.dest('dist'))
+        .pipe(maps.write())
+        .pipe(gulp.dest('./dist'))
+        .on('error',util.log);
+});
+
+gulp.task('build-node', function() {
+    return gulp.src(files
+            .concat('rwt.node')
+            .map((x) => './src/' + x + '.js'))
+        .pipe(concat('rwt.nd.js'))
+        .pipe(gulp.dest('./dist'))
+        .on('error',util.log);
 });
 

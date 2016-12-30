@@ -1,19 +1,6 @@
 'use strict';
 
-var Lazy = require('lazy.js');
-var utils = require('./utils.js');
-var handlers = require('./handlers.js');
-var sockjs = require('sockjs');
-var SockJS = sockjs.listen;
 var cachedKeyIdx = 0;
-
-var isNode = false;
-try {
-    localStorage['test'] = 1
-} catch(e) {
-    var localStorage = {};
-    isNode = true;
-}
 
 var $POST = function(url, data, callBack, errorBack,headers){
     var opts = {
@@ -37,7 +24,7 @@ function reWheelConnection(endPoint, getLogin){
     // main 
     var self = this;
     this.getLogin = getLogin;
-    this.events = new handlers.NamedEventManager()
+    this.events = new NamedEventManager()
     this.$POST = $POST.bind(this);
     this.options = {endPoint : endPoint};
     this.on = this.events.on.bind(this);
@@ -100,36 +87,35 @@ reWheelConnection.prototype.$post = function(url, data,callBack){
         var headers = null;
     }
 
-    var promise = utils.xdr(this.options.endPoint + url, data,function(responseData, status, xhr){
-            ths.events.emit('http-response', responseData, xhr.status, url, data);
-            ths.events.emit('http-response-' + xhr.status, responseData, url, data);
-            if (callBack) { callBack( responseData )};
+    var promise = utils.xdr(this.options.endPoint + url, data, this.options.application, this.options.token)
+        .then(function(xhr){
+            ths.events.emit('http-response', xhr.responseText, xhr.status, url, data);
+            ths.events.emit('http-response-' + xhr.status, xhr.responseText, url, data);
+            if (xhr.responseData){
+                ths.events.emit('http-response-' + xhr.status + '-json', xhr.responseData, url, data);
+            }
+            if (callBack) { callBack( xhr.responseData || xhr.responseText )};
         }, function(xhr) {
-            try{
-                var responseData = JSON.parse(xhr.responseText)
-                ths.events.emit('error-json', responseData, xhr.status, url, data, xhr);
-                ths.events.emit('error-json-' + xhr.status, responseData,url, data, xhr);
-            } catch (e){
+            if (xhr.responseData){
+                ths.events.emit('error-json', xhr.responseData, xhr.status, url, data, xhr);
+                ths.events.emit('error-json-' + xhr.status, xhr.responseData,url, data, xhr);
+            } else {                
                 ths.events.emit('error-http',xhr.responseText, xhr.status,url,data,xhr);
                 ths.events.emit('error-http-' + xhr.status, xhr.responseText,url,data,xhr);
             }
-        }, this.options.application, this.options.token);
+        });
     return promise;
 };
 reWheelConnection.prototype.login = function(username, password){
     var url = this.options.endPoint + 'api/login';
     var connection = this;
-    var headers = null;
-    if (this.options.token){
-        headers = { token : this.options.token };
-    }
     return new Promise(function(accept,reject){
         utils.xdr(url,{ username: username, password : password}, function(status){
                 for (var x in status){ connection.options[x] = status[x]; }
                 accept(status);
         }, function(xhr,data, status){
             reject(xhr.responseJSON);
-        },null,null, true);
+        },null,connection.options.token, true);
 /*        $.ajax({
 //            headers : headers,
             url : url,
@@ -209,58 +195,55 @@ var utils = {
         console.log(arguments);
     },
 
-    xdr: function (url, data, callback, errback, application,token) {
+    xdr: function (url, data, application,token, formEncode) {
         /**
          * Make an HTTP Request and return its promise.
          */
-        var req;
-        if (data && data.constructor === Object){
-            data = JSON.stringify(data);
-        }
-        
-        if(XMLHttpRequest) {
-            req = new XMLHttpRequest();
+        return new Promise(function(accept, reject) {
+            var req;
+            if (!data) { data = {};}
 
-            if('withCredentials' in req) {
-                req.open('POST', url, true);
-                
-                req.onerror = errback;
+            if(XMLHttpRequest) {
+                req = new XMLHttpRequest();
                 req.onreadystatechange = function() {
                     if (req.readyState === 4) {
+                        try{
+                            var responseData = JSON.parse(req.responseText);
+                        } catch (a){
+                            var responseData = null;
+                        }
+                        var response = {responseData: responseData, responseText: req.responseText,status: req.statusText, request: req};
                         if (req.status >= 200 && req.status < 400) {
-                            try{
-                                var responseText = JSON.parse(req.responseText);
-                            } catch (a){
-                                var responseText = req.responseText;
-                            }
-                            callback(responseText,req.statusText, req);
+                            accept(response);
                         } else {
-                            errback(new Error('Response returned with non-OK status'));
+                            reject(response);
                         }
                     }
                 };
-                if (application)
-                    req.setRequestHeader('application', application);
-                if (token)
-                    req.setRequestHeader('token', token);
-                req.setRequestHeader('Accept','application/json');
-                req.send(data);
+            } else if(XDomainRequest){
+                req = new XDomainRequest();
+                req.onload = function() {
+                    accept(req.responseText,req.statusText, req);
+                };
+            } else {
+                reject(new Error('CORS not supported'));
             }
-        } else if(XDomainRequest) {
-            req = new XDomainRequest();
-            req.open('POST', url);
-            req.onerror = errback;
-            req.onload = function() {
-                callback(req.responseText,req.statusText, req);
-            };
-            if (application)
-                req.setRequestHeader('application', application);
-            if (token)
-                req.setRequestHeader('token', token);
+
+            req.open('POST', url, true);
+            req.onerror = reject;
+            req.setRequestHeader('Accept','application/json');
+            req.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+            if (!formEncode){
+                data = { args : JSON.stringify(data) }
+            }
+            if (token) { data.token = token }
+            if (application) { data.application = application; }
+            data = Lazy(data).map(function(v,k){
+              return k + '=' + encodeURI(v.toString());  
+            }).toArray().join('&');
             req.send(data);
-        } else {
-            errback(new Error('CORS not supported'));
-        }
+    //        req.send(null);
+        })
     },
     
     capitalize : function (s) {
@@ -279,7 +262,7 @@ var utils = {
         return (ret % 34958374957).toString();
     },
 
-    makeFilter : function (model, filter, unifier) {
+    makeFilter : function (model, filter, unifier, dontTranslateFilter) {
         /**
          * Make filter for Array.filter function as an and of or
          */
@@ -288,22 +271,26 @@ var utils = {
             return function(x){ return true };
         }
         var source = Lazy(filter).map(function(vals, field){
-            if (vals.constructor !== Array){
+            if (!vals) { vals = [null]}
+            if (!Array.isArray(vals)){
                 vals = [vals];
             }
-            if (model.fields[field].type === 'reference') {
+            if (!dontTranslateFilter && (model.fields[field].type === 'reference')) {
                 field = '_' + field;
-                vals = Lazy(vals).filter(Boolean).map(function(x){
-                    if (x.constructor !== Number){
+                vals = Lazy(vals).map(function(x){
+                    if (x && (x.constructor !== Number)){
                         return x.id;
                     } else 
                         return x;
                 }).toArray();
+            } else if (model.fields[field].type === 'string'){
+                vals = vals.map(JSON.stringify);
             }
             return '(' +  Lazy(vals).map(function(x){
                 return '(x.' + field + ' === ' + x + ')';
             }).join(' || ')  +')';
         }).toArray().join(unifier);
+        return new Function("x", "return " + source);
     },
 
     sameAs : function (x, y) {
@@ -331,11 +318,11 @@ var utils = {
         // registering all event handlers
 
         this.handlers = {
-            wizard : new handlers.Handler(),
-            onConnection : new handlers.Handler(),
-            onDisconnection : new handlers.Handler(),
-            onMessageJson : new handlers.Handler(),
-            onMessageText : new handlers.Handler()
+            wizard : new Handler(),
+            onConnection : new Handler(),
+            onDisconnection : new Handler(),
+            onMessageJson : new Handler(),
+            onMessageText : new Handler()
         }
         this.onWizard = this.handlers.wizard.addHandler.bind(this.handlers.wizard);
         this.onConnect = this.handlers.onConnection.addHandler.bind(this.handlers.onConnection);
@@ -419,37 +406,3 @@ var utils = {
 };
 
 
-if (isNode){
-    utils.xdr = function (url, data, callback, errback, application,token,form){
-        var request = require('request');
-        var headers = {};
-        if (application) {
-            headers.application = application;
-        }
-        if (token) {
-            headers.token = token;
-        }
-        var options = {
-            url : url,
-            method : 'POST',
-            headers : headers
-        };
-        if (data){
-            if (form)
-                options.form = data;
-            else {
-                options.json = data;
-            }
-        }
-        var res = request(options, function(error, response, body){
-            try { 
-                body = JSON.parse(body);
-            } catch (e) { }
-            callback(body, 'Ok', res);
-        }, function(body){
-            errorBack(body, 'Boh', res);
-        });
-    }
-}
-
-var exports = module.exports = utils;

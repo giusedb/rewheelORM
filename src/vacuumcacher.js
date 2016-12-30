@@ -31,6 +31,3 @@ function VacuumCacher(touch, asked, name){
         return Lazy(missing.splice(0,missing.length)).unique().toArray();
     }
 }
-
-
-exports = module.exports = VacuumCacher;

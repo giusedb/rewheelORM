@@ -1,10 +1,3 @@
-'use strict';
-
-var Lazy = require('lazy.js');
-var Toucher = require('./toucher.js');
-var VacuumCacher = require('./vacuumcacher.js');
-var ManyToManyRelation = require('./manytomany.js');
-
 function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
     var touch = new Toucher();
     var mainIndex = {};
@@ -43,6 +36,13 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
                 m2mIndex[relation.indexName] = new ManyToManyRelation(relation,m2m[relation.indexName]);
         });
     });
+    var m2mGet = function(indexName, n, collection, callBack){
+        W2PRESOURCE.$post((n ? utils.reverse('/', indexName) : indexName) + 's' + '/list', {collection: collection}, function(data){
+            W2PRESOURCE.gotData(data, callBack);
+            delete actives[indexName]
+        });        
+    };
+
     var getM2M = function(indexName, collection, n, callBack){
         // ask all items in collection to m2m index
         Lazy(collection).each(m2m[indexName][n].ask.bind(m2m[indexName][n]));
@@ -51,10 +51,7 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
         // calling remote for m2m collection if any
         if (collection.length){
             actives[indexName] = 1;
-            W2PRESOURCE.$post((n ? utils.reverse('/', indexName) : indexName) + 's' + '/list', {collection: collection}, function(data){
-                W2PRESOURCE.gotData(data, callBack);
-                delete actives[indexName]
-            });
+            m2mGet(indexName, n, collection, callBack);
         } else {
             callBack && callBack();
         }
@@ -72,15 +69,25 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
         Lazy(m2m).each(function(indexes, indexName){
             Lazy(indexes).each(function (index,n) {
                 var collection = index.missings();
-                collection = Lazy(collection).filter(function (x) {
-                    return x
-                }).map(function (x) {
+                collection = Lazy(collection).filter(Boolean).map(function (x) {
                     return parseInt(x)
                 }).toArray();
                 if (collection.length){
                     var INDEX = m2mIndex[indexName];
+                    var getter = INDEX['get' + (1 - n)].bind(INDEX);
                     changed = true;
-                    getM2M(indexName, collection, n);
+                    m2mGet(indexName, n, collection, function(data){
+                        var ids = collection.map(getter);
+                        if (ids.length){
+                            var otherIndex = indexName.split('/')[1 - n];
+                            W2PRESOURCE.describe(otherIndex,function(){
+//                                Lazy(ids).flatten().unique().each(mainIndex[otherIndex].ask);
+                                Lazy(ids).flatten().unique().each(function(x){
+                                    mainIndex[otherIndex].ask(x,true);
+                                });
+                            });
+                        }
+                    });
                 }
             });
         });
@@ -110,21 +117,23 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
             filter[fieldName] = ids;
             W2PRESOURCE.fetch(mainResource, filter);
         });
-/*        
-        Lazy(MISSING_PERMISSIONS).filter(function (x) {
-            return (x.length > 0) && (!(x in permissionWaiting));
-        }).each(function (x, resourceName) {
+        
+        Lazy(Lazy(permissions).map(function(v,k){
+            return [k, v.missings()]
+        }).filter(function (v) {
+            return v[1].length
+        }).toObject()).each(function (ids, resourceName) {
             changed = true;
-            var ids = MISSING_PERMISSIONS[resourceName].splice(0);
-            permissionWaiting[resourceName] = 1;
-            W2P_POST(resourceName, 'my_perms', {ids: Lazy(ids).unique().toArray()}, function (data) {
-                W2PRESOURCE.gotPermissions(data.PERMISSIONS);
-                delete permissionWaiting[resourceName]
-            });
+            if (ids.length){
+                actives[resourceName] = 1;
+                W2PRESOURCE.$post(resourceName + '/my_perms', {ids: Lazy(ids).unique().toArray()}, function (data) {
+                    W2PRESOURCE.gotPermissions(data.PERMISSIONS);
+                    delete actives[resourceName]
+                });
+            }
         });
-*/
     }
     setInterval(linkUnlinked,50);
 };
 
-var exports = module.exports = AutoLinker;
+

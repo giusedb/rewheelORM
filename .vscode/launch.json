@@ -40,6 +40,17 @@
             "env": { "NODE_ENV": "testing"}
         },
         {
+            "name": "Gulp default",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceRoot}/node_modules/gulp/bin/gulp.js",
+            "stopOnEntry": false,
+//            "args": ["test/listcachertest2.js", "--no-timeouts"],
+            "cwd": "${workspaceRoot}",
+            "runtimeExecutable": null,
+            "env": { "NODE_ENV": "testing"}
+        },
+        {
             "type": "node",
             "request": "launch",
             "name": "Start with node",
