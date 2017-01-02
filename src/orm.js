@@ -247,7 +247,7 @@ var baseORM = function(options, extORM){
             }
             // eliminate unwritables
             Lazy(Klass.fieldsOrder).filter(function(x){
-                return true;// return !fields[x].writable;
+                return !fields[x].writable;
             }).each(function(fieldName){
                 if (fieldName in o) {
                     delete o[fieldName];
@@ -560,7 +560,7 @@ var baseORM = function(options, extORM){
 
         // cleaning from useless deleted data
         data = Lazy(data).filter(function (v, k) {
-            return (!('deleted' in v) || ((k in W2PRESOURCE.modelCache)));
+            return (!('deleted' in v) || ((k in modelCache)));
         }).toObject();
         
         if ('m2m' in data) {

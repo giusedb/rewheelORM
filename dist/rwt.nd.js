@@ -182,12 +182,14 @@ reWheelConnection.prototype.login = function(username, password){
     var url = this.options.endPoint + 'api/login';
     var connection = this;
     return new Promise(function(accept,reject){
-        utils.xdr(url,{ username: username, password : password}, function(status){
+        utils.xdr(url,{ username: username, password : password}, null,connection.options.token, true)
+            .then(function(xhr){
+                var status = xhr.responseData;
                 for (var x in status){ connection.options[x] = status[x]; }
                 accept(status);
-        }, function(xhr,data, status){
-            reject(xhr.responseJSON);
-        },null,connection.options.token, true);
+            }, function(xhr){
+                reject(xhr.responseData || responseText);
+            });
 /*        $.ajax({
 //            headers : headers,
             url : url,
@@ -304,15 +306,16 @@ var utils = {
             req.open('POST', url, true);
             req.onerror = reject;
             req.setRequestHeader('Accept','application/json');
-            req.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+            if (token) { data.__token__ = token }
             if (!formEncode){
-                data = { args : JSON.stringify(data) }
+                req.setRequestHeader('Content-Type','text/plain');
+                data = Lazy(data).size()?JSON.stringify(data):'';
+            } else {
+                req.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+                data = Lazy(data).map(function(v,k){
+                  return k + '=' + encodeURI(v.toString());  
+                }).toArray().join('&');
             }
-            if (token) { data.token = token }
-            if (application) { data.application = application; }
-            data = Lazy(data).map(function(v,k){
-              return k + '=' + encodeURI(v.toString());  
-            }).toArray().join('&');
             req.send(data);
     //        req.send(null);
         })
@@ -415,7 +418,7 @@ var utils = {
                 //$.notify(x.data);
                 try {
                     //TODO set fromRealtime
-                    self.handlers.onMessageJson.handle($.parseJSON(x.data));
+                    self.handlers.onMessageJson.handle(JSON.parse(x.data));
                     //TODO unset fromRealtime
                 } catch (e){
                     self.handlers.onMessageText.handle(x.data);
@@ -1152,7 +1155,7 @@ var baseORM = function(options, extORM){
             }
             // eliminate unwritables
             Lazy(Klass.fieldsOrder).filter(function(x){
-                return true;// return !fields[x].writable;
+                return !fields[x].writable;
             }).each(function(fieldName){
                 if (fieldName in o) {
                     delete o[fieldName];
@@ -1465,7 +1468,7 @@ var baseORM = function(options, extORM){
 
         // cleaning from useless deleted data
         data = Lazy(data).filter(function (v, k) {
-            return (!('deleted' in v) || ((k in W2PRESOURCE.modelCache)));
+            return (!('deleted' in v) || ((k in modelCache)));
         }).toObject();
         
         if ('m2m' in data) {

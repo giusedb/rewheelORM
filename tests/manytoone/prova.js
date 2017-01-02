@@ -1,4 +1,4 @@
-//utils.cleanStorage();
+utils.cleanStorage();
 var orm = new rwt('http://localhost:5000/cartha/', function(){
     return {
         username : 'a@b.com',
