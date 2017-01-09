@@ -47,9 +47,12 @@ gulp.task('minified', function() {
 });
 
 gulp.task('build-node', function() {
-    return gulp.src(files
-            .concat('rwt.node')
-            .map((x) => './src/' + x + '.js'))
+    console.log('executing files', files);
+    var nfiles = files.concat(['rwt.node']);
+    console.log('files become', nfiles);
+    nfiles = nfiles = nfiles.map((x) => './src/' + x + '.js')
+    console.log('files become', nfiles);
+    return gulp.src(nfiles)
         .pipe(concat('rwt.nd.js'))
         .pipe(gulp.dest('./dist'))
         .on('error',util.log);

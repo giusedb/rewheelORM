@@ -6,9 +6,14 @@ var localStorage = {};
 
 exports = module.exports = reWheelORM;
 exports.utils = utils;
-exports.ListCacher = ListCacher;
-exports.NamedHandler = NamedEventManager;
-utils.xdr = function (url, data, callback, errback, application,token,form){
+exports.classes = {
+    ListCacher : ListCacher,
+    NamedHandler : NamedEventManager,
+    ManyToManyRelation : ManyToManyRelation,
+    AutoLinker : AutoLinker
+}
+
+utils.xdr = function (url, data, application,token,form){
     var request = require('request');
     var headers = {};
     if (application) {

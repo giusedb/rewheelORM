@@ -2,6 +2,24 @@
 
 var cachedKeyIdx = 0;
 
+var nullString = function() { return ''};
+
+function mockObject(){
+    return new Proxy({}, {
+        get: function(target, name) {
+            if (typeof name  === 'string'){
+                if (name === 'toString') {
+                    return nullString;
+                } else {
+                    return mockObject();
+                }
+            } else {
+                return target[name];
+            }
+        }
+    })
+}
+
 var $POST = function(url, data, callBack, errorBack,headers){
     var opts = {
         accepts : 'application/json',
@@ -405,7 +423,17 @@ var utils = {
 
     noop : function(){},
 
-    tzOffset: new Date().getTimezoneOffset() * 60000
+    tzOffset: new Date().getTimezoneOffset() * 60000,
+
+    transFieldType: {
+        date: function(x) { return new Date(x * 1000 + utils.tzOffset ) },
+        datetime: function(x) { return new Date(x * 1000 + utils.tzOffset ) },
+        string: function(x) { return x.toString(); },
+        text: function(x) { return x.toString(); },
+        integer: function(x) { return parseInt(x); },
+        float: function(x) { return parseFloat(x); }
+    }, 
+    mock : mockObject
 };
 
 

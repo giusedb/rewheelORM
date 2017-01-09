@@ -364,6 +364,16 @@ var baseORM = function(options, extORM){
         Klass.fields = Lazy(model.fields).concat(Lazy(model.privateArgs)).concat(Lazy(model.references).tap(function (x) {
             x.type = x.type || 'reference'
         })).indexBy('id').toObject();
+        // setting widgets for fields
+        Lazy(Klass.fields).each(function(field){
+            if (!field.widget){
+                field.widget = field.type;
+            }
+        });
+        // setting choices widget for references
+        Lazy(model.references).each(function(field){
+            if (!field.widget){ field.widget = 'choices'; }
+        });
         // building references to (many to one) fields
         Lazy(model.references).each(function (ref) {
             var ext_ref = ref.to;
@@ -378,7 +388,8 @@ var baseORM = function(options, extORM){
                 var result = (ext_ref in IDB) && this[local_ref] && IDB[ext_ref].get(this[local_ref]);
                 if (!result && (ext_ref in linker.mainIndex)) {
                     // asking to linker
-                    return linker.mainIndex[ext_ref].ask(this[local_ref],true);
+                    linker.mainIndex[ext_ref].ask(this[local_ref],true);
+                    return utils.mock();
                 }
                 return result;
             }, function (value) {
@@ -1015,4 +1026,8 @@ reWheelORM.prototype.delete = function (modelName, ids){
     })
 };
 
+reWheelORM.prototype.$sendToEndpoint = function (url, data){
+    var options = this.$orm.connection.options;
+    return utils.xdr(options.endPoint + url, data, options.application ,options.token);
+}
 

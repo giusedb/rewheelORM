@@ -74,6 +74,24 @@ function NamedEventManager (){
 
 var cachedKeyIdx = 0;
 
+var nullString = function() { return ''};
+
+function mockObject(){
+    return new Proxy({}, {
+        get: function(target, name) {
+            if (typeof name  === 'string'){
+                if (name === 'toString') {
+                    return nullString;
+                } else {
+                    return mockObject();
+                }
+            } else {
+                return target[name];
+            }
+        }
+    })
+}
+
 var $POST = function(url, data, callBack, errorBack,headers){
     var opts = {
         accepts : 'application/json',
@@ -477,7 +495,17 @@ var utils = {
 
     noop : function(){},
 
-    tzOffset: new Date().getTimezoneOffset() * 60000
+    tzOffset: new Date().getTimezoneOffset() * 60000,
+
+    transFieldType: {
+        date: function(x) { return new Date(x * 1000 + utils.tzOffset ) },
+        datetime: function(x) { return new Date(x * 1000 + utils.tzOffset ) },
+        string: function(x) { return x.toString(); },
+        text: function(x) { return x.toString(); },
+        integer: function(x) { return parseInt(x); },
+        float: function(x) { return parseFloat(x); }
+    }, 
+    mock : mockObject
 };
 
 
@@ -1272,6 +1300,16 @@ var baseORM = function(options, extORM){
         Klass.fields = Lazy(model.fields).concat(Lazy(model.privateArgs)).concat(Lazy(model.references).tap(function (x) {
             x.type = x.type || 'reference'
         })).indexBy('id').toObject();
+        // setting widgets for fields
+        Lazy(Klass.fields).each(function(field){
+            if (!field.widget){
+                field.widget = field.type;
+            }
+        });
+        // setting choices widget for references
+        Lazy(model.references).each(function(field){
+            if (!field.widget){ field.widget = 'choices'; }
+        });
         // building references to (many to one) fields
         Lazy(model.references).each(function (ref) {
             var ext_ref = ref.to;
@@ -1286,7 +1324,8 @@ var baseORM = function(options, extORM){
                 var result = (ext_ref in IDB) && this[local_ref] && IDB[ext_ref].get(this[local_ref]);
                 if (!result && (ext_ref in linker.mainIndex)) {
                     // asking to linker
-                    return linker.mainIndex[ext_ref].ask(this[local_ref],true);
+                    linker.mainIndex[ext_ref].ask(this[local_ref],true);
+                    return utils.mock();
                 }
                 return result;
             }, function (value) {
@@ -1923,6 +1962,10 @@ reWheelORM.prototype.delete = function (modelName, ids){
     })
 };
 
+reWheelORM.prototype.$sendToEndpoint = function (url, data){
+    var options = this.$orm.connection.options;
+    return utils.xdr(options.endPoint + url, data, options.application ,options.token);
+}
 
 
 var Lazy = require('lazy.js');
@@ -1933,9 +1976,14 @@ var localStorage = {};
 
 exports = module.exports = reWheelORM;
 exports.utils = utils;
-exports.ListCacher = ListCacher;
-exports.NamedHandler = NamedEventManager;
-utils.xdr = function (url, data, callback, errback, application,token,form){
+exports.classes = {
+    ListCacher : ListCacher,
+    NamedHandler : NamedEventManager,
+    ManyToManyRelation : ManyToManyRelation,
+    AutoLinker : AutoLinker
+}
+
+utils.xdr = function (url, data, application,token,form){
     var request = require('request');
     var headers = {};
     if (application) {

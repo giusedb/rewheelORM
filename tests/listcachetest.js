@@ -1,9 +1,12 @@
 var assert = require('assert');
-var Lazy = require('../bower_components/lazy.js/lazy.js');
-var ListCache = require('../src/listcacher.js');
+var Lazy = require('lazy.js');
+var rwt = require('../dist/rwt.nd.js');
 
-var ls = new ListCache(Lazy);
-var mockModel = { modelName : 'x'};
+var ls = new rwt.classes.ListCacher();
+var mockModel = { 
+    modelName : 'x',
+    fields: Lazy(['a','b','c','d','e']).map((x) => [x, { type : 'integer'}]).toObject()
+};
 
 function sortFilter(dict){
     if (dict)
