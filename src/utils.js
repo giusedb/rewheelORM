@@ -105,22 +105,26 @@ reWheelConnection.prototype.$post = function(url, data,callBack){
         var headers = null;
     }
 
-    var promise = utils.xdr(this.options.endPoint + url, data, this.options.application, this.options.token)
-        .then(function(xhr){
-            ths.events.emit('http-response', xhr.responseText, xhr.status, url, data);
-            ths.events.emit('http-response-' + xhr.status, xhr.responseText, url, data);
-            if (xhr.responseData){
-                ths.events.emit('http-response-' + xhr.status + '-json', xhr.responseData, url, data);
-            }
-            if (callBack) { callBack( xhr.responseData || xhr.responseText )};
-        }, function(xhr) {
-            if (xhr.responseData){
-                ths.events.emit('error-json', xhr.responseData, xhr.status, url, data, xhr);
-                ths.events.emit('error-json-' + xhr.status, xhr.responseData,url, data, xhr);
-            } else {                
-                ths.events.emit('error-http',xhr.responseText, xhr.status,url,data,xhr);
-                ths.events.emit('error-http-' + xhr.status, xhr.responseText,url,data,xhr);
-            }
+    var promise = new Promise(function(accept,reject){
+        utils.xdr(ths.options.endPoint + url, data, ths.options.application, ths.options.token)
+            .then(function(xhr){
+                ths.events.emit('http-response', xhr.responseText, xhr.status, url, data);
+                ths.events.emit('http-response-' + xhr.status, xhr.responseText, url, data);
+                if (xhr.responseData){
+                    ths.events.emit('http-response-' + xhr.status + '-json', xhr.responseData, url, data);
+                }
+                if (callBack) { callBack( xhr.responseData || xhr.responseText )};
+                accept(xhr.responseData || xhr.responseText);
+            }, function(xhr) {
+                if (xhr.responseData){
+                    ths.events.emit('error-json', xhr.responseData, xhr.status, url, data, xhr);
+                    ths.events.emit('error-json-' + xhr.status, xhr.responseData,url, data, xhr);
+                } else {                
+                    ths.events.emit('error-http',xhr.responseText, xhr.status,url,data,xhr);
+                    ths.events.emit('error-http-' + xhr.status, xhr.responseText,url,data,xhr);
+                }
+                reject(xhr.responseData || xhr.responseText);
+            });
         });
     return promise;
 };

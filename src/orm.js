@@ -367,12 +367,12 @@ var baseORM = function(options, extORM){
         // setting widgets for fields
         Lazy(Klass.fields).each(function(field){
             if (!field.widget){
-                field.widget = field.type;
+                if (field.type === 'reference'){
+                    field.widget = 'choices'
+                } else {
+                    field.widget = field.type;
+                }
             }
-        });
-        // setting choices widget for references
-        Lazy(model.references).each(function(field){
-            if (!field.widget){ field.widget = 'choices'; }
         });
         // building references to (many to one) fields
         Lazy(model.references).each(function (ref) {
@@ -1027,7 +1027,6 @@ reWheelORM.prototype.delete = function (modelName, ids){
 };
 
 reWheelORM.prototype.$sendToEndpoint = function (url, data){
-    var options = this.$orm.connection.options;
-    return utils.xdr(options.endPoint + url, data, options.application ,options.token);
+    return this.$orm.$post(url, data);
 }
 
