@@ -1,4 +1,4 @@
-function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
+function AutoLinker(actives, IDB, W2PRESOURCE, listCache){
     var touch = new Toucher();
     var mainIndex = {};
     var foreignKeys = {};
@@ -11,7 +11,7 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
     this.m2mIndex = m2mIndex;
     this.permissions = permissions;
 
-    events.on('model-definition',function(model){
+    W2PRESOURCE.on('model-definition',function(model){
         // defining all indexes for primary key
         var pkIndex = listCache.getIndexFor(model.name, 'id');
         mainIndex[model.name] = new VacuumCacher(touch, pkIndex, 'mainIndex.' + model.name);

@@ -51,12 +51,48 @@
         <h2>
             Prova ORM 
         </h2>
+        <div id="loginForm">
+            <div class="row">
+            <div class="col-xs-12 col-sm-8 col-md-4 offset-sm-2 offset-md-4">
+                <form id="form">
+                <div class="form-group">
+                    <label for="username">
+                    Username:
+                    </label>
+                    <div class="input-group">
+                    <div class="input-group-addon">@</div>
+                    <input type="text" class="form-control" placeholder="username" id="username">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="password">
+                    Password:
+                    </label>
+                    <div class="input-group">
+                    <div class="input-group-addon">***</div>
+                    <input type="password" class="form-control" placeholder="password" id="password">
+                    </div>
+                </div>
+                <div class="alert alert-danger" id="error"></div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </div>
+                </form>
+            </div>
+            </div>            
+        </div>
+        <div id="body">
+            <div class="pull-right">
+                <div class="btn btn-info" id="logoutButton">Log out</div>
+            </div>
+        </div>
         <script src="../../bower_components/jquery/dist/jquery.min.js"></script>
         <script src="../../bower_components/bootstrap-css/js/bootstrap.js"></script>
         <script src="../../bower_components/lazy.js/lazy.min.js"></script>
         <script src="../../bower_components/sockjs/sockjs.min.js"></script>
         <script src="../../src/handlers.js"></script>
         <script src="../../src/utils.js"></script>
+        <script src="../../src/connection.js"></script>
         <script src="../../src/toucher.js"></script>
         <script src="../../src/vacuumcacher.js"></script>
         <script src="../../src/autolinker.js"></script>

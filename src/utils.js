@@ -20,6 +20,7 @@ function mockObject(){
     })
 }
 
+/*
 var $POST = function(url, data, callBack, errorBack,headers){
     var opts = {
         accepts : 'application/json',
@@ -38,6 +39,7 @@ var $POST = function(url, data, callBack, errorBack,headers){
     return $.ajax(opts);
 }
 
+
 function reWheelConnection(endPoint, getLogin){
     // main 
     var self = this;
@@ -47,11 +49,46 @@ function reWheelConnection(endPoint, getLogin){
     this.options = {endPoint : endPoint};
     this.on = this.events.on.bind(this);
 };
+
+reWheelConnection.prototype.updateStatus = function(status, callBack, error) {
+    if (status) {
+        var isLogged = (status.user_id && !this.options.user_id );
+        for (var x in status){ this.options[x] = status[x]; }
+        localStorage.lastRWTStatus = JSON.stringify(status);
+        if (isLogged) {
+            this.events.emit('login', this.options.user_id);
+        }
+    }
+    if (!this.options.user_id && this.getLogin){
+        var logInfo = this.getLogin(error);
+        if (logInfo.constructor === Object){
+            this.login(logInfo.username, logInfo.password)
+            .then((function(status){
+                this.updateStatus(status, callBack);
+            }).bind(this));
+        } else if (logInfo.constructor === Promise) {
+            logInfo.then((function(obj){
+                var x = this.login(obj.username,obj.password);
+                var manageError = (function(bad){
+                    this.updateStatus(null,callBack,bad.error);
+                }).bind(this);
+                if (callBack){
+                    x.then(callBack,manageError);
+                } else {
+                    x.then(null, manageError);
+                }
+            }).bind(this));
+        }
+    } else {
+        callBack && callBack(this.options);
+    }    
+}
+
 reWheelConnection.prototype.status = function(callBack, force){
     if (('lastRWTStatus' in localStorage) && !force) {
         try{
             var status = JSON.parse(localStorage.lastRWTStatus);
-            for (var x in status){ this.options[x] = status[x]; }
+            this.updateStatus(status,callBack);
         } catch (e){
             return this.status(callBack, true);
         }
@@ -71,20 +108,7 @@ reWheelConnection.prototype.status = function(callBack, force){
         return this.$post('api/status',null,function(status){
             localStorage.lastRWTStatus = JSON.stringify(status);
             self._status_calling = false;
-            for (var x in status){ self.options[x] = status[x]; }
-            if (!status.user_id && self.getLogin){
-                var logInfo = self.getLogin();
-                if (logInfo.constructor === Object){
-                    self.login(logInfo.username, logInfo.password)
-                    .then(function(status){
-                        for (var x in status){ self.options[x] = status[x]; }
-                        localStorage.lastRWTStatus = JSON.stringify(status);
-                        callBack && callBack(status)
-                    })
-                }
-            } else {
-                callBack && callBack(self.options);
-            }
+            self.updateStatus(status,callBack);
         });        
     }
 };
@@ -128,39 +152,21 @@ reWheelConnection.prototype.$post = function(url, data,callBack){
         });
     return promise;
 };
+
 reWheelConnection.prototype.login = function(username, password){
     var url = this.options.endPoint + 'api/login';
     var connection = this;
     return new Promise(function(accept,reject){
         utils.xdr(url,{ username: username, password : password}, null,connection.options.token, true)
             .then(function(xhr){
-                var status = xhr.responseData;
-                for (var x in status){ connection.options[x] = status[x]; }
+                connection.updateStatus(xhr.responseData);
                 accept(status);
             }, function(xhr){
-                reject(xhr.responseData || responseText);
+                reject(xhr.responseData || xhr.responseText);
             });
-/*        $.ajax({
-//            headers : headers,
-            url : url,
-            data : { username: username, password : password},
-            dataType : 'json',
-            method : 'POST',
-//            contentType : 'application/json',
-            mimeType : 'application/json',
-            crossDomain : true,
-            success : function(status){
-                for (var x in status){ connection.options[x] = status[x]; }
-                accept(status);
-            },
-            error : function(xhr,data, status){
-                reject(xhr.responseJSON);
-            }
-            
-        })
-*/
     });
 };
+
 reWheelConnection.prototype.connect = function(callBack){
     var self = this;
     var wsconnect = function(self){
@@ -169,13 +175,15 @@ reWheelConnection.prototype.connect = function(callBack){
             self.events.emit('ws-connected', self.wsConnection);
         });
         self.wsConnection.onDisconnect(function(){ 
-            setTimeout(function(){
-                wsconnect(self);                
-            },1000);
+            if (self.options && self.options.realtimeEndPoint){
+                setTimeout(function(){
+                    wsconnect(self);                
+                },1000);
+            }
         });
     }
-
-    return this.status(function(status){
+    
+    return this.status((function(status){
         if ('token' in self.options){
             callBack && callBack(status);
         } else {
@@ -190,12 +198,27 @@ reWheelConnection.prototype.connect = function(callBack){
                 });
             }
         }
-        if (status.token && status.realtimeEndPoint && (!self.wsConnection)){
+        if (self.options.token && self.options.realtimeEndPoint && (!self.wsConnection)){
             wsconnect(self);
         }
-    });
+    }).bind(this));
 };
 
+reWheelConnection.prototype.logOut = function(url, callBack){
+    return this.$post('api/logout',{},(function(status) {
+        if ('lastRWTStatus' in localStorage) {
+            delete localStorage.lastRWTStatus;
+        }
+        this.options = {endPoint: this.options.endPoint};
+        if (this.wsConnection) { 
+            this.wsConnection.close();
+            this.wsConnection = null;
+        }
+        if (url) { location = url; }
+        callBack && callBack();
+    }).bind(this));
+}
+*/
 var utils = {
     renameFunction : function (name, fn) {
         return (new Function("return function (call) { return function " + name +
@@ -213,8 +236,8 @@ var utils = {
         };
         return wrapper;
     },
-    $POST : $POST,
-    reWheelConnection: reWheelConnection,
+//    $POST : $POST,
+//    reWheelConnection: reWheelConnection,
     log: function(){ 
         console.log(arguments);
     },
@@ -329,63 +352,7 @@ var utils = {
         }
         return true;
     },
-
-
-    wsConnect : function (options) {
-        /**
-         * Connects a websocket with reWheel connection
-         */
-        if(!options){
-            return;
-        }
-        var self = this;
-        
-        // registering all event handlers
-
-        this.handlers = {
-            wizard : new Handler(),
-            onConnection : new Handler(),
-            onDisconnection : new Handler(),
-            onMessageJson : new Handler(),
-            onMessageText : new Handler()
-        }
-        this.onWizard = this.handlers.wizard.addHandler.bind(this.handlers.wizard);
-        this.onConnect = this.handlers.onConnection.addHandler.bind(this.handlers.onConnection);
-        this.onDisconnect = this.handlers.onDisconnection.addHandler.bind(this.handlers.onDisconnection);
-        this.onMessageJson = this.handlers.onMessageJson.addHandler.bind(this.handlers.onMessageJson);
-        this.onMessageText = this.handlers.onMessageText.addHandler.bind(this.handlers.onMessageText);
-
-        this.options = options
-
-        var connection = new SockJS(options.realtimeEndPoint);
-        connection.onopen = function (x) {
-            console.log('open : ' + x);
-            connection.tenant();
-            self.handlers.onConnection.handle(x);
-        };
-        connection.onmessage = function (x) {
-            if (x.type == 'message') {
-                //$.notify(x.data);
-                try {
-                    //TODO set fromRealtime
-                    self.handlers.onMessageJson.handle(JSON.parse(x.data));
-                    //TODO unset fromRealtime
-                } catch (e){
-                    self.handlers.onMessageText.handle(x.data);
-                }
-            } else {
-                console.log(x);
-            }
-        };
-        connection.onclose = function () {
-            setTimeout(utils.wsConnect,1000);
-            self.handlers.onDisconnection.handle();
-        };
-        connection.tenant = function () {
-            connection.send('TENANT:' + self.options.application + ':' + self.options.token);
-        }
-    },
-
+    
     pluralize : function(str, model){
         /**
          * Lexically returns english plural form

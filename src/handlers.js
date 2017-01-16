@@ -68,4 +68,14 @@ function NamedEventManager (){
         delete handlerId[handler];
         return count;
     };
+    /**
+     * Call event once
+     */
+    this.once = function(eventName, handlerFunction) {
+        var self = this;
+        var handler = this.on(eventName, function(){
+            handlerFunction.apply(this, arguments);
+            self.unbind(handler);
+        })
+    }
 }

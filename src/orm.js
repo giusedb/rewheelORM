@@ -17,14 +17,14 @@ var baseORM = function(options, extORM){
     connection.on('connected', function(){ 
         this.connected = true;
     });
-    var events = connection.events;
-    this.on = events.on.bind(this);
-    this.emit = events.emit.bind(this);
-    this.unbind = events.unbind.bind(this);
+    this.on = connection.on;
+    this.emit = connection.emit;
+    this.unbind = connection.unbind;
+    this.once = connection.once;
     this.$post = connection.$post.bind(connection);
 
     // handling websocket events
-    events.on('ws-connected',function(ws){
+    this.on('ws-connected',function(ws){
         console.info('Websocket connected');
         // all json data has to be parsed by gotData
         ws.onMessageJson(W2PRESOURCE.gotData.bind(W2PRESOURCE));
@@ -33,10 +33,10 @@ var baseORM = function(options, extORM){
             console.info('WS message : ' + message)
         });
     });
-    events.on('ws-disconnected', function(ws){
+    this.on('ws-disconnected', function(ws){
         console.error('Websocket disconnected')
     });
-    events.on('error-json-404',function(error,url, sentData, xhr){ 
+    this.on('error-json-404',function(error,url, sentData, xhr){ 
         console.error('JSON error ', JSON.stringify(error));
         delete waitingConnections[url.split('/')[0]];
     })
@@ -55,11 +55,11 @@ var baseORM = function(options, extORM){
     var failedModels = {};
     var waitingConnections = {} // actual connection who i'm waiting for
     var listCache = new ListCacher(Lazy);
-    var linker = new AutoLinker(events,waitingConnections,IDB, this, listCache);
+    var linker = new AutoLinker(waitingConnections,IDB, this, listCache);
 /*    window.ll = linker;
     window.lc = listCache;
 */
-    this.validationEvent = events.on('error-json-513', function(data, url, sentData, xhr){
+    this.validationEvent = this.on('error-json-513', function(data, url, sentData, xhr){
         if (currentContext.savingErrorHanlder){
             currentContext.savingErrorHanlder(new ValidationError(data));
         }
@@ -413,7 +413,7 @@ var baseORM = function(options, extORM){
             var propertyName = ref.by + '_' + utils.pluralize(ref.id);
             var revIndex = ref.by;
             if (Klass.prototype.hasOwnProperty(propertyName)) {
-                $log.error('Tryed to redefine property ' + propertyName + 's' + ' for ' + Klass.modelName);
+                console.error('Tryed to redefine property ' + propertyName + 's' + ' for ' + Klass.modelName);
             } else {
                 cachedPropertyByEvents(Klass.prototype, propertyName, function () {
                     var ret = (revIndex in IDB) ? REVIDX[indexName].get(this.id + ''):null;
@@ -540,8 +540,8 @@ var baseORM = function(options, extORM){
                 }
             };
         }
-        events.emit('new-model', Klass);
-        events.emit('new-model-' + Klass.modelName);
+        W2PRESOURCE.emit('new-model', Klass);
+        W2PRESOURCE.emit('new-model-' + Klass.modelName);
         return Klass;
     };
 
@@ -650,7 +650,7 @@ var baseORM = function(options, extORM){
 
                 //// sending signal for updated values
                 if (changed.length) {
-                    events.emit('updated-' + modelName, changed);
+                    W2PRESOURCE.emit('updated-' + modelName, changed);
                 }
                 //******** Update universe ********
                 var no = newObjects.toArray();
@@ -663,12 +663,12 @@ var baseORM = function(options, extORM){
                 });
                 // sending events for new values
                 if (no.length)
-                    events.emit('new-' + modelName, Lazy(no), data.totalResults);
+                    W2PRESOURCE.emit('new-' + modelName, Lazy(no), data.totalResults);
                 if (deleted) {
-                    events.emit('deleted-' + modelName, deleted);
+                    W2PRESOURCE.emit('deleted-' + modelName, deleted);
                 }
                 // sending events for data arrived
-                events.emit('received-' + modelName);
+                W2PRESOURCE.emit('received-' + modelName);
             });
         });
         if (TOONE) {
@@ -714,7 +714,7 @@ var baseORM = function(options, extORM){
         if (callBack) {
             callBack(data);
         }
-        events.emit('got-data');
+        W2PRESOURCE.emit('got-data');
     };
     this.gotPermissions = function (data) {
         Lazy(data).each(function (v, resourceName) {
@@ -741,8 +741,8 @@ var baseORM = function(options, extORM){
                     m2mIndex[verb](data);
                 });
             });
-            events.emit('received-m2m');
-            events.emit('received-m2m-' + indexName);
+            W2PRESOURCE.emit('received-m2m');
+            W2PRESOURCE.emit('received-m2m-' + indexName);
         });
     }
 
@@ -754,9 +754,9 @@ var baseORM = function(options, extORM){
             },500);
         } else {
             // fetching asynchromous model from server
-            W2PRESOURCE.describe(modelName, function(model){
+            W2PRESOURCE.describe(modelName, (function(model){
                 // if data cames from realtime connection
-                if (W2PRESOURCE.connection.options.realtimeEndPoint) {
+                if (W2PRESOURCE.connection.cachedStatus.realtimeEndPoint) {
                                         
                     // getting filter filtered by caching system
                     filter = listCache.filter(model,filter);
@@ -766,15 +766,16 @@ var baseORM = function(options, extORM){
                         // ask for missings and parse server response in order to enrich my local DB.
                         // placing lock for this model
                         waitingConnections[modelName] = true;
-                        W2PRESOURCE.$post(modelName + '/list', {filter : filter},function(data){
-                            W2PRESOURCE.gotData(data,callBack)
+                        W2PRESOURCE.$post(modelName + '/list', {filter : filter})
+                            .then(function(data){
+                                W2PRESOURCE.gotData(data,callBack);
 
-                            // release lock
-                            delete waitingConnections[modelName];
-                        }, function(){
-                            // release lock
-                            delete waitingConnections[modelName];
-                        });
+                                // release lock
+                                delete waitingConnections[modelName];
+                            }, function(ret){
+                                // release lock
+                                delete waitingConnections[modelName];
+                            });
                     } else {
                         callBack && callBack();
                     }
@@ -787,7 +788,7 @@ var baseORM = function(options, extORM){
                             W2PRESOURCE.gotData(data, callBack);
                         });
                 }
-            });
+            }).bind(this));
         }
     };
 
@@ -840,7 +841,7 @@ var baseORM = function(options, extORM){
                         callBack && callBack(modelCache[modelName]);
                         delete waitingConnections[modelName];
                     }, function(data){
-                        this.events.modelNotFound.handle(modelName);
+                        this.modelNotFound.handle(modelName);
                         failedModels[modelName] = true;
                     });
                 }
@@ -911,16 +912,7 @@ var baseORM = function(options, extORM){
             W2PRESOURCE.addPersistentAttributes(model.modelName);
         }
     });
-    this.connect = function(callBack){
-        if (this.isConnected){
-            callBack(this.connection.options);
-        } else {
-            this.connection.connect(function(status){
-                W2PRESOURCE.isConnected = true;
-                callBack(status);
-            });            
-        }
-    };
+
     this.query = function(modelName, filter, together, callBack){
         var ths = this;
         this.describe(modelName,function(model){
@@ -936,6 +928,14 @@ var baseORM = function(options, extORM){
     this.delete = function(modelName, ids, callBack){
         return this.$post(modelName + '/delete', { id : ids}, callBack);
     };
+
+    this.connect = function (callBack) {
+        if (this.connection.isLoggedIn) {
+            callBack();
+        } else {
+            this.connection.connect(callBack);
+        }
+    }
 };
 
 function reWheelORM(endPoint, loginFunc){
@@ -943,9 +943,29 @@ function reWheelORM(endPoint, loginFunc){
     this.on = this.$orm.on.bind(this.$orm);
     this.emit = this.$orm.emit.bind(this.$orm);
     this.unbind = this.$orm.unbind.bind(this.$orm);
+    this.once = this.$orm.once;
     this.addModelHandler = this.$orm.addModelHandler.bind(this.$orm);
     this.addPersistentAttributes = this.$orm.addPersistentAttributes.bind(this.$orm);
     this.utils = utils;
+    this.logout = this.$orm.connection.logout.bind(this.$orm.connection);
+}
+
+reWheelORM.prototype.connect = function(){
+    var connection = this.$orm.connection;
+    return new Promise((function(callBack,reject){
+        connection.connect(callBack);
+    }));
+}
+
+reWheelORM.prototype.login = function(username, password) {
+    return new Promise((function(accept,reject){
+        this.$orm.connection.login(username, password, accept);    
+    }).bind(this));
+    
+};
+
+reWheelORM.prototype.logout = function(url){
+    return this.$orm.connection.logout();
 }
 
 reWheelORM.prototype.getModel = function(modelName){
@@ -996,13 +1016,9 @@ reWheelORM.prototype.query = function (modelName, filter, related){
             together = related.split(',');
         }
         try{
-            if (self.$orm.isConnected){
+            self.$orm.connect(function(){
                 self.$orm.query(modelName, filter, together, accept);
-            } else {
-                self.$orm.connect(function(){
-                    self.$orm.query(modelName, filter, together, accept);
-                });
-            }
+            });
         } catch (e){
             reject(e);
         }
@@ -1013,20 +1029,32 @@ reWheelORM.prototype.delete = function (modelName, ids){
     var self = this;
     return new Promise(function(accept, reject){
         try{
-            if (self.$orm.connected){
+            self.$orm.connect(function(){
                 self.$orm.delete(modelName, ids, accept);
-            } else {
-                self.$orm.connect(function(){
-                    self.$orm.delete(modelName, ids, accept);
-                });
-            }
+            });
         } catch (e){
             reject(e);
         }
     })
 };
 
+reWheelORM.prototype.getLoggedUser = function() {
+    var self = this;
+    if (this.$orm.connection.cachedStatus.user_id)
+        return this.get('auth_user',this.$orm.connection.cachedStatus.user_id);
+    else {
+        return new Promise(function(accept, reject) {
+            self.once('logged-in',function(user) {
+                self.get('auth_user', user).then(accept);
+            });
+        });
+    }
+}
+
 reWheelORM.prototype.$sendToEndpoint = function (url, data){
     return this.$orm.$post(url, data);
 }
 
+reWheelORM.prototype.login = function(username, password){
+    return this.$orm.connection.login(username,password);
+}

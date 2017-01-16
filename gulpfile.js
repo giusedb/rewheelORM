@@ -7,6 +7,7 @@ var babel = require('gulp-babel');
 var wrap = require('gulp-wrap-js');
 var maps = require('gulp-sourcemaps')
 var Lazy = require('lazy.js');
+var ts = require('gulp-typescript');
 
 //var filesNames = ["handlers.js", "utils.js", "toucher.js","vacuumcacher.js" , "autolinker.js", "listcacher.js", "cacher.js", "orm.js", "rwt.js"];
 
@@ -16,6 +17,7 @@ console.log(libs);
 var files = [
     "handlers",
     "utils",
+    "connection",
     "toucher",
     "vacuumcacher",
     "autolinker",
@@ -24,6 +26,18 @@ var files = [
     "cacher",
     "orm",
 ];
+gulp.task('ts',function(){
+    return gulp.src('./srcts/**/*.ts')
+        .pipe(maps.init())
+        .pipe(ts({
+            module: 'amd',
+            target: 'ES6',
+            noImplicitAny: false,
+            out: 'ts-out.js',
+        }))
+        .pipe(maps.write())
+        .pipe(gulp.dest('./src'));
+})
 
 gulp.task('default', function() {
     return gulp.src(files.map((x) => './src/' + x + '.js'))
