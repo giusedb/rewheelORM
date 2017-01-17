@@ -11,10 +11,10 @@ function AutoLinker(actives, IDB, W2PRESOURCE, listCache){
     this.m2mIndex = m2mIndex;
     this.permissions = permissions;
 
-    W2PRESOURCE.on('model-definition',function(model){
+    W2PRESOURCE.on('model-definition',function(model, index){
         // defining all indexes for primary key
         var pkIndex = listCache.getIndexFor(model.name, 'id');
-        mainIndex[model.name] = new VacuumCacher(touch, pkIndex, 'mainIndex.' + model.name);
+        mainIndex[model.name] = new VacuumCacher(touch, pkIndex, 'mainIndex.' + model.name, index);
         
         // creating permission indexes
         permissions[model.name] = new VacuumCacher(touch,null, 'permissions.' + model.name);

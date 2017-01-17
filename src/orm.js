@@ -39,7 +39,10 @@ var baseORM = function(options, extORM){
     this.on('error-json-404',function(error,url, sentData, xhr){ 
         console.error('JSON error ', JSON.stringify(error));
         delete waitingConnections[url.split('/')[0]];
-    })
+    });
+    this.on('realtime-message-json', function(message){
+        W2PRESOURCE.gotData(message);
+    });
 
     // initialization
     var W2PRESOURCE = this;
@@ -125,7 +128,7 @@ var baseORM = function(options, extORM){
         if (model.privateArgs) {
             fields = fields.merge(model.privateArgs);
         }
-        W2PRESOURCE.emit('model-definition', model);
+        W2PRESOURCE.emit('model-definition', model, getIndex(model.name));
         // getting fields of type date and datetime
 /*
         var DATEFIELDS = fields.filter(function (x) {

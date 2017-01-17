@@ -259,7 +259,7 @@ var utils = {
                         } catch (a){
                             var responseData = null;
                         }
-                        var response = {responseData: responseData, responseText: req.responseText,status: req.statusText, request: req};
+                        var response = {responseData: responseData, responseText: req.responseText,status: req.status, request: req};
                         if (req.status >= 200 && req.status < 400) {
                             accept(response);
                         } else {

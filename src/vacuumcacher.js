@@ -1,7 +1,7 @@
 'use strict';
 
 
-function VacuumCacher(touch, asked, name){
+function VacuumCacher(touch, asked, name, pkIndex){
 /*
     if (name){
         console.info('created VacuumCacher as ' + name);
@@ -13,6 +13,9 @@ function VacuumCacher(touch, asked, name){
     var missing = [];
     
     this.ask = function (id,lazy){
+        if (pkIndex && (id in pkIndex.source)) {
+            return;
+        }
         if (!Lazy(asked).contains(id)){
 //            console.info('asking (' + id + ') from ' + name);
             missing.push(id);
