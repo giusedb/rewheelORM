@@ -4,7 +4,7 @@ function ManyToManyRelation(relation,m2m){
     var items = [];
     this.add = items.push.bind(items);
     this.add = function(item){
-        console.log('adding ' + item);
+  //      console.log('adding ' + item);
         if (!(Lazy(items).find(item))){
             items.push(item);
         }
