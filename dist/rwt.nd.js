@@ -68,6 +68,16 @@ function NamedEventManager (){
         delete handlerId[handler];
         return count;
     };
+    /**
+     * Call event once
+     */
+    this.once = function(eventName, handlerFunction) {
+        var self = this;
+        var handler = this.on(eventName, function(){
+            handlerFunction.apply(this, arguments);
+            self.unbind(handler);
+        })
+    }
 }
 
 'use strict';
@@ -92,6 +102,7 @@ function mockObject(){
     })
 }
 
+/*
 var $POST = function(url, data, callBack, errorBack,headers){
     var opts = {
         accepts : 'application/json',
@@ -110,6 +121,7 @@ var $POST = function(url, data, callBack, errorBack,headers){
     return $.ajax(opts);
 }
 
+
 function reWheelConnection(endPoint, getLogin){
     // main 
     var self = this;
@@ -119,11 +131,46 @@ function reWheelConnection(endPoint, getLogin){
     this.options = {endPoint : endPoint};
     this.on = this.events.on.bind(this);
 };
+
+reWheelConnection.prototype.updateStatus = function(status, callBack, error) {
+    if (status) {
+        var isLogged = (status.user_id && !this.options.user_id );
+        for (var x in status){ this.options[x] = status[x]; }
+        localStorage.lastRWTStatus = JSON.stringify(status);
+        if (isLogged) {
+            this.events.emit('login', this.options.user_id);
+        }
+    }
+    if (!this.options.user_id && this.getLogin){
+        var logInfo = this.getLogin(error);
+        if (logInfo.constructor === Object){
+            this.login(logInfo.username, logInfo.password)
+            .then((function(status){
+                this.updateStatus(status, callBack);
+            }).bind(this));
+        } else if (logInfo.constructor === Promise) {
+            logInfo.then((function(obj){
+                var x = this.login(obj.username,obj.password);
+                var manageError = (function(bad){
+                    this.updateStatus(null,callBack,bad.error);
+                }).bind(this);
+                if (callBack){
+                    x.then(callBack,manageError);
+                } else {
+                    x.then(null, manageError);
+                }
+            }).bind(this));
+        }
+    } else {
+        callBack && callBack(this.options);
+    }    
+}
+
 reWheelConnection.prototype.status = function(callBack, force){
     if (('lastRWTStatus' in localStorage) && !force) {
         try{
             var status = JSON.parse(localStorage.lastRWTStatus);
-            for (var x in status){ this.options[x] = status[x]; }
+            this.updateStatus(status,callBack);
         } catch (e){
             return this.status(callBack, true);
         }
@@ -143,20 +190,7 @@ reWheelConnection.prototype.status = function(callBack, force){
         return this.$post('api/status',null,function(status){
             localStorage.lastRWTStatus = JSON.stringify(status);
             self._status_calling = false;
-            for (var x in status){ self.options[x] = status[x]; }
-            if (!status.user_id && self.getLogin){
-                var logInfo = self.getLogin();
-                if (logInfo.constructor === Object){
-                    self.login(logInfo.username, logInfo.password)
-                    .then(function(status){
-                        for (var x in status){ self.options[x] = status[x]; }
-                        localStorage.lastRWTStatus = JSON.stringify(status);
-                        callBack && callBack(status)
-                    })
-                }
-            } else {
-                callBack && callBack(self.options);
-            }
+            self.updateStatus(status,callBack);
         });        
     }
 };
@@ -200,39 +234,21 @@ reWheelConnection.prototype.$post = function(url, data,callBack){
         });
     return promise;
 };
+
 reWheelConnection.prototype.login = function(username, password){
     var url = this.options.endPoint + 'api/login';
     var connection = this;
     return new Promise(function(accept,reject){
         utils.xdr(url,{ username: username, password : password}, null,connection.options.token, true)
             .then(function(xhr){
-                var status = xhr.responseData;
-                for (var x in status){ connection.options[x] = status[x]; }
+                connection.updateStatus(xhr.responseData);
                 accept(status);
             }, function(xhr){
-                reject(xhr.responseData || responseText);
+                reject(xhr.responseData || xhr.responseText);
             });
-/*        $.ajax({
-//            headers : headers,
-            url : url,
-            data : { username: username, password : password},
-            dataType : 'json',
-            method : 'POST',
-//            contentType : 'application/json',
-            mimeType : 'application/json',
-            crossDomain : true,
-            success : function(status){
-                for (var x in status){ connection.options[x] = status[x]; }
-                accept(status);
-            },
-            error : function(xhr,data, status){
-                reject(xhr.responseJSON);
-            }
-            
-        })
-*/
     });
 };
+
 reWheelConnection.prototype.connect = function(callBack){
     var self = this;
     var wsconnect = function(self){
@@ -241,13 +257,15 @@ reWheelConnection.prototype.connect = function(callBack){
             self.events.emit('ws-connected', self.wsConnection);
         });
         self.wsConnection.onDisconnect(function(){ 
-            setTimeout(function(){
-                wsconnect(self);                
-            },1000);
+            if (self.options && self.options.realtimeEndPoint){
+                setTimeout(function(){
+                    wsconnect(self);                
+                },1000);
+            }
         });
     }
-
-    return this.status(function(status){
+    
+    return this.status((function(status){
         if ('token' in self.options){
             callBack && callBack(status);
         } else {
@@ -262,12 +280,27 @@ reWheelConnection.prototype.connect = function(callBack){
                 });
             }
         }
-        if (status.token && status.realtimeEndPoint && (!self.wsConnection)){
+        if (self.options.token && self.options.realtimeEndPoint && (!self.wsConnection)){
             wsconnect(self);
         }
-    });
+    }).bind(this));
 };
 
+reWheelConnection.prototype.logOut = function(url, callBack){
+    return this.$post('api/logout',{},(function(status) {
+        if ('lastRWTStatus' in localStorage) {
+            delete localStorage.lastRWTStatus;
+        }
+        this.options = {endPoint: this.options.endPoint};
+        if (this.wsConnection) { 
+            this.wsConnection.close();
+            this.wsConnection = null;
+        }
+        if (url) { location = url; }
+        callBack && callBack();
+    }).bind(this));
+}
+*/
 var utils = {
     renameFunction : function (name, fn) {
         return (new Function("return function (call) { return function " + name +
@@ -285,8 +318,8 @@ var utils = {
         };
         return wrapper;
     },
-    $POST : $POST,
-    reWheelConnection: reWheelConnection,
+//    $POST : $POST,
+//    reWheelConnection: reWheelConnection,
     log: function(){ 
         console.log(arguments);
     },
@@ -308,7 +341,7 @@ var utils = {
                         } catch (a){
                             var responseData = null;
                         }
-                        var response = {responseData: responseData, responseText: req.responseText,status: req.statusText, request: req};
+                        var response = {responseData: responseData, responseText: req.responseText,status: req.status, request: req};
                         if (req.status >= 200 && req.status < 400) {
                             accept(response);
                         } else {
@@ -401,63 +434,7 @@ var utils = {
         }
         return true;
     },
-
-
-    wsConnect : function (options) {
-        /**
-         * Connects a websocket with reWheel connection
-         */
-        if(!options){
-            return;
-        }
-        var self = this;
-        
-        // registering all event handlers
-
-        this.handlers = {
-            wizard : new Handler(),
-            onConnection : new Handler(),
-            onDisconnection : new Handler(),
-            onMessageJson : new Handler(),
-            onMessageText : new Handler()
-        }
-        this.onWizard = this.handlers.wizard.addHandler.bind(this.handlers.wizard);
-        this.onConnect = this.handlers.onConnection.addHandler.bind(this.handlers.onConnection);
-        this.onDisconnect = this.handlers.onDisconnection.addHandler.bind(this.handlers.onDisconnection);
-        this.onMessageJson = this.handlers.onMessageJson.addHandler.bind(this.handlers.onMessageJson);
-        this.onMessageText = this.handlers.onMessageText.addHandler.bind(this.handlers.onMessageText);
-
-        this.options = options
-
-        var connection = new SockJS(options.realtimeEndPoint);
-        connection.onopen = function (x) {
-            console.log('open : ' + x);
-            connection.tenant();
-            self.handlers.onConnection.handle(x);
-        };
-        connection.onmessage = function (x) {
-            if (x.type == 'message') {
-                //$.notify(x.data);
-                try {
-                    //TODO set fromRealtime
-                    self.handlers.onMessageJson.handle(JSON.parse(x.data));
-                    //TODO unset fromRealtime
-                } catch (e){
-                    self.handlers.onMessageText.handle(x.data);
-                }
-            } else {
-                console.log(x);
-            }
-        };
-        connection.onclose = function () {
-            setTimeout(utils.wsConnect,1000);
-            self.handlers.onDisconnection.handle();
-        };
-        connection.tenant = function () {
-            connection.send('TENANT:' + self.options.application + ':' + self.options.token);
-        }
-    },
-
+    
     pluralize : function(str, model){
         /**
          * Lexically returns english plural form
@@ -516,6 +493,223 @@ var utils = {
 
 'use strict';
 
+const STATUSKEY = 'lastRWTConnectionStatus';
+
+function RealtimeConnection(endPoint, rwtConnection){
+    /**
+     * Connects a websocket with reWheel connection
+     */
+    var self = this;
+
+    var connection = new SockJS(endPoint);
+    connection.onopen = function (x) {
+        console.log('open : ' + x);
+        connection.tenant();
+        rwtConnection.emit('realtime-connection-open',x);
+    };
+    connection.onmessage = function (x) {
+        if (x.type == 'message') {
+            //$.notify(x.data);
+            try {
+                //TODO set fromRealtime
+                rwtConnection.emit('realtime-message-json', JSON.parse(x.data));
+                //TODO unset fromRealtime
+            } catch (e){
+                rwtConnection.emit('realtime-message-text', JSON.parse(x.data));
+            }
+        } else {
+            console.log('from realtime ',x);
+        }
+    };
+    connection.onclose = function () {
+        setTimeout(utils.wsConnect,1000);
+        rwtConnection.emit('realtime-connection-closed');
+    };
+    connection.tenant = function () {
+        connection.send('TENANT:' + rwtConnection.cachedStatus.application + ':' + rwtConnection.cachedStatus.token);
+    }
+    this.close = function() {
+        connection.close();
+    }
+}    
+
+function reWheelConnection(endPoint, getLogin){
+    /**
+     * Connection basic for reWheel
+     * @param endPoint: string base url for all comunication
+     * @param getLogin: function to be called in case of missing login.
+     *  this function could return :
+     *  -   a { username : <username> , password: <password>} or
+     *  -   b Promise -> { username : <username> , password: <password>}
+     */
+    // main initialization
+    var events = new NamedEventManager();
+    this.getLogin = getLogin;
+    this.endPoint = endPoint.endsWith('/')? endPoint: (endPoint + '/');
+    this.on = events.on;
+    this.unbind = events.unbind;
+    this.emit = events.emit;
+    this.once = events.once;
+    this.cachedStatus = {};
+    this.isConnected = false;
+    this.isLoggedIn = false;
+    // registering update status
+    var ths = this;
+};
+
+reWheelConnection.prototype.$post = function(url, data,callBack){
+    /**
+     * AJAX call for fetch all data from server
+     * @param url: last url part for ajax call
+     * @param data: data object to be sent
+     * @param callBack: function(xhr) will be called when data arrives
+     * @returns Promise<xhr> same of callBack
+     */
+    // initialization
+    var ths = this;
+    var promise = new Promise(function(accept,reject){
+        utils.xdr(ths.endPoint + url, data, ths.cachedStatus.application, ths.cachedStatus.token)
+            .then(function(xhr){
+                ths.emit('http-response', xhr.responseText, xhr.status, url, data);
+                ths.emit('http-response-' + xhr.status, xhr.responseText, url, data);
+                if (xhr.responseData){
+                    ths.emit('http-response-' + xhr.status + '-json', xhr.responseData, url, data);
+                }
+                if (callBack) { callBack( xhr.responseData || xhr.responseText )};
+                accept(xhr.responseData || xhr.responseText);
+            }, function(xhr) {
+                if (xhr.responseData){
+                    ths.emit('error-json', xhr.responseData, xhr.status, url, data, xhr);
+                    ths.emit('error-json-' + xhr.status, xhr.responseData,url, data, xhr);
+                } else {                
+                    ths.emit('error-http',xhr.responseText, xhr.status,url,data,xhr);
+                    ths.emit('error-http-' + xhr.status, xhr.responseText,url,data,xhr);
+                }
+                reject(xhr.responseData || xhr.responseText);
+            });
+        });
+    return promise;
+};
+
+reWheelConnection.prototype.status = function(callBack, force) {
+    /**
+     * Check current status and callback for results.
+     * It caches results for further.
+     * @param callback: (status object)
+     * @param force: boolean if true empties cache  
+     * @return void
+     */
+    // if force, clear all cached values
+    if (force) {
+        this.cachedStatus = {};
+        if (STATUSKEY in localStorage){
+            delete localStorage[STATUSKEY];
+        }
+    }
+    // try for value resolution
+    // first on memory
+    if (Lazy(this.cachedStatus).size()){
+    
+    // then in localStorage
+    } else if (STATUSKEY in localStorage) {
+        this.updateStatus(JSON.parse(localStorage[STATUSKEY]));
+    // then on server
+    } else {
+        var ths = this;
+        this.$post('api/status',{}, function(status){
+            callBack(status);
+            ths.updateStatus(status);
+        });
+        // doesn't call callback
+        return
+    }
+    callBack(this.cachedStatus);
+};
+
+reWheelConnection.prototype.updateStatus = function(status){
+    this.isConnected = Boolean(status.token);
+    this.isLoggedIn = Boolean(status.user_id);
+    var oldStatus = this.cachedStatus;
+    this.cachedStatus = status;
+    if (!oldStatus.user_id && status.user_id){
+        this.emit('logged-in',status.user_id);
+    } else if (oldStatus.user_id && !status.user_id){
+        this.emit('logged-out');
+    } else if (this.isConnected && !this.isLoggedIn){
+        this.emit('login-required');
+        if (this.getLogin){
+            var loginInfo = this.getLogin();
+            if (loginInfo.constructor === Object){
+                this.login(loginInfo.username, loginInfo.password, loginInfo.callBack);
+            } else if (loginInfo.constructor === Promise) {
+                loginInfo.then(function(obj){
+                    this.login(obj.username, obj.password, obj.callBack);
+                })
+            }
+        }
+    }
+    // realtime connection is setted
+    if (!oldStatus.realtimeEndPoint && status.realtimeEndPoint) {
+        this.wsConnection = new RealtimeConnection(status.realtimeEndPoint, this);
+    // realtime connection is closed
+    } else if (oldStatus.realtimeEndPoint && !status.realtimeEndPoint) {
+        this.wsConnection.close();
+        delete this.wsConnection;
+    }
+    this.emit('update-connection-status', status, oldStatus);
+    localStorage[STATUSKEY] = JSON.stringify(status);
+}
+
+reWheelConnection.prototype.login = function(username, password){
+    /**
+     * make login and return a promise. If login succed, promise will be accepted
+     * If login fails promise will be rejected with error
+     * @param username: username
+     * @param password: password
+     * @return Promise (user object)
+     */
+    var ths = this;
+    return new Promise(function(accept, reject){
+        utils.xdr(ths.endPoint + 'api/login', {username: username || '', password: password || ''},null,ths.cachedStatus.token, true)
+            .then(function(xhr){
+                // update status
+                ths.updateStatus(xhr.responseData);
+                // call with user id
+                accept({status : 'success', userid: ths.cachedStatus.user_id});
+            }, function(xhr) {
+                // if error call error manager with error
+                accept({error: xhr.responseData.error, status: 'error'});
+            });
+    });
+};
+
+reWheelConnection.prototype.logout = function() {
+    var ths = this;
+    return new Promise(function(accept,reject) {
+        ths.$post('api/logout')
+            .then(function(ok){
+                ths.updateStatus({});
+                delete localStorage[STATUSKEY];
+                accept()
+            }, reject);
+    });
+};
+
+reWheelConnection.prototype.connect = function(callBack) {
+    if (this.isLoggedIn) {
+        callBack(this.cachedStatus.user_id);
+    } else {
+        // wait for login
+        this.once('logged-in',function(user_id){
+            callBack(user_id);
+        });
+        this.status(utils.noop);
+    }
+}
+
+utils.reWheelConnection = reWheelConnection;
+'use strict';
+
 function Toucher(){
     var touched = false
     this.touch = function(){
@@ -531,7 +725,7 @@ function Toucher(){
 'use strict';
 
 
-function VacuumCacher(touch, asked, name){
+function VacuumCacher(touch, asked, name, pkIndex){
 /*
     if (name){
         console.info('created VacuumCacher as ' + name);
@@ -543,6 +737,9 @@ function VacuumCacher(touch, asked, name){
     var missing = [];
     
     this.ask = function (id,lazy){
+        if (pkIndex && (id in pkIndex.source)) {
+            return;
+        }
         if (!Lazy(asked).contains(id)){
 //            console.info('asking (' + id + ') from ' + name);
             missing.push(id);
@@ -562,7 +759,7 @@ function VacuumCacher(touch, asked, name){
     }
 }
 
-function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
+function AutoLinker(actives, IDB, W2PRESOURCE, listCache){
     var touch = new Toucher();
     var mainIndex = {};
     var foreignKeys = {};
@@ -575,10 +772,10 @@ function AutoLinker(events, actives, IDB, W2PRESOURCE, listCache){
     this.m2mIndex = m2mIndex;
     this.permissions = permissions;
 
-    events.on('model-definition',function(model){
+    W2PRESOURCE.on('model-definition',function(model, index){
         // defining all indexes for primary key
         var pkIndex = listCache.getIndexFor(model.name, 'id');
-        mainIndex[model.name] = new VacuumCacher(touch, pkIndex, 'mainIndex.' + model.name);
+        mainIndex[model.name] = new VacuumCacher(touch, pkIndex, 'mainIndex.' + model.name, index);
         
         // creating permission indexes
         permissions[model.name] = new VacuumCacher(touch,null, 'permissions.' + model.name);
@@ -869,7 +1066,7 @@ function ManyToManyRelation(relation,m2m){
     var items = [];
     this.add = items.push.bind(items);
     this.add = function(item){
-        console.log('adding ' + item);
+  //      console.log('adding ' + item);
         if (!(Lazy(items).find(item))){
             items.push(item);
         }
@@ -957,14 +1154,14 @@ var baseORM = function(options, extORM){
     connection.on('connected', function(){ 
         this.connected = true;
     });
-    var events = connection.events;
-    this.on = events.on.bind(this);
-    this.emit = events.emit.bind(this);
-    this.unbind = events.unbind.bind(this);
+    this.on = connection.on;
+    this.emit = connection.emit;
+    this.unbind = connection.unbind;
+    this.once = connection.once;
     this.$post = connection.$post.bind(connection);
 
     // handling websocket events
-    events.on('ws-connected',function(ws){
+    this.on('ws-connected',function(ws){
         console.info('Websocket connected');
         // all json data has to be parsed by gotData
         ws.onMessageJson(W2PRESOURCE.gotData.bind(W2PRESOURCE));
@@ -973,13 +1170,16 @@ var baseORM = function(options, extORM){
             console.info('WS message : ' + message)
         });
     });
-    events.on('ws-disconnected', function(ws){
+    this.on('ws-disconnected', function(ws){
         console.error('Websocket disconnected')
     });
-    events.on('error-json-404',function(error,url, sentData, xhr){ 
+    this.on('error-json-404',function(error,url, sentData, xhr){ 
         console.error('JSON error ', JSON.stringify(error));
         delete waitingConnections[url.split('/')[0]];
-    })
+    });
+    this.on('realtime-message-json', function(message){
+        W2PRESOURCE.gotData(message);
+    });
 
     // initialization
     var W2PRESOURCE = this;
@@ -995,11 +1195,11 @@ var baseORM = function(options, extORM){
     var failedModels = {};
     var waitingConnections = {} // actual connection who i'm waiting for
     var listCache = new ListCacher(Lazy);
-    var linker = new AutoLinker(events,waitingConnections,IDB, this, listCache);
+    var linker = new AutoLinker(waitingConnections,IDB, this, listCache);
 /*    window.ll = linker;
     window.lc = listCache;
 */
-    this.validationEvent = events.on('error-json-513', function(data, url, sentData, xhr){
+    this.validationEvent = this.on('error-json-513', function(data, url, sentData, xhr){
         if (currentContext.savingErrorHanlder){
             currentContext.savingErrorHanlder(new ValidationError(data));
         }
@@ -1065,7 +1265,7 @@ var baseORM = function(options, extORM){
         if (model.privateArgs) {
             fields = fields.merge(model.privateArgs);
         }
-        W2PRESOURCE.emit('model-definition', model);
+        W2PRESOURCE.emit('model-definition', model, getIndex(model.name));
         // getting fields of type date and datetime
 /*
         var DATEFIELDS = fields.filter(function (x) {
@@ -1353,7 +1553,7 @@ var baseORM = function(options, extORM){
             var propertyName = ref.by + '_' + utils.pluralize(ref.id);
             var revIndex = ref.by;
             if (Klass.prototype.hasOwnProperty(propertyName)) {
-                $log.error('Tryed to redefine property ' + propertyName + 's' + ' for ' + Klass.modelName);
+                console.error('Tryed to redefine property ' + propertyName + 's' + ' for ' + Klass.modelName);
             } else {
                 cachedPropertyByEvents(Klass.prototype, propertyName, function () {
                     var ret = (revIndex in IDB) ? REVIDX[indexName].get(this.id + ''):null;
@@ -1480,8 +1680,8 @@ var baseORM = function(options, extORM){
                 }
             };
         }
-        events.emit('new-model', Klass);
-        events.emit('new-model-' + Klass.modelName);
+        W2PRESOURCE.emit('new-model', Klass);
+        W2PRESOURCE.emit('new-model-' + Klass.modelName);
         return Klass;
     };
 
@@ -1590,7 +1790,7 @@ var baseORM = function(options, extORM){
 
                 //// sending signal for updated values
                 if (changed.length) {
-                    events.emit('updated-' + modelName, changed);
+                    W2PRESOURCE.emit('updated-' + modelName, changed);
                 }
                 //******** Update universe ********
                 var no = newObjects.toArray();
@@ -1603,12 +1803,12 @@ var baseORM = function(options, extORM){
                 });
                 // sending events for new values
                 if (no.length)
-                    events.emit('new-' + modelName, Lazy(no), data.totalResults);
+                    W2PRESOURCE.emit('new-' + modelName, Lazy(no), data.totalResults);
                 if (deleted) {
-                    events.emit('deleted-' + modelName, deleted);
+                    W2PRESOURCE.emit('deleted-' + modelName, deleted);
                 }
                 // sending events for data arrived
-                events.emit('received-' + modelName);
+                W2PRESOURCE.emit('received-' + modelName);
             });
         });
         if (TOONE) {
@@ -1654,7 +1854,7 @@ var baseORM = function(options, extORM){
         if (callBack) {
             callBack(data);
         }
-        events.emit('got-data');
+        W2PRESOURCE.emit('got-data');
     };
     this.gotPermissions = function (data) {
         Lazy(data).each(function (v, resourceName) {
@@ -1681,8 +1881,8 @@ var baseORM = function(options, extORM){
                     m2mIndex[verb](data);
                 });
             });
-            events.emit('received-m2m');
-            events.emit('received-m2m-' + indexName);
+            W2PRESOURCE.emit('received-m2m');
+            W2PRESOURCE.emit('received-m2m-' + indexName);
         });
     }
 
@@ -1694,9 +1894,9 @@ var baseORM = function(options, extORM){
             },500);
         } else {
             // fetching asynchromous model from server
-            W2PRESOURCE.describe(modelName, function(model){
+            W2PRESOURCE.describe(modelName, (function(model){
                 // if data cames from realtime connection
-                if (W2PRESOURCE.connection.options.realtimeEndPoint) {
+                if (W2PRESOURCE.connection.cachedStatus.realtimeEndPoint) {
                                         
                     // getting filter filtered by caching system
                     filter = listCache.filter(model,filter);
@@ -1706,15 +1906,16 @@ var baseORM = function(options, extORM){
                         // ask for missings and parse server response in order to enrich my local DB.
                         // placing lock for this model
                         waitingConnections[modelName] = true;
-                        W2PRESOURCE.$post(modelName + '/list', {filter : filter},function(data){
-                            W2PRESOURCE.gotData(data,callBack)
+                        W2PRESOURCE.$post(modelName + '/list', {filter : filter})
+                            .then(function(data){
+                                W2PRESOURCE.gotData(data,callBack);
 
-                            // release lock
-                            delete waitingConnections[modelName];
-                        }, function(){
-                            // release lock
-                            delete waitingConnections[modelName];
-                        });
+                                // release lock
+                                delete waitingConnections[modelName];
+                            }, function(ret){
+                                // release lock
+                                delete waitingConnections[modelName];
+                            });
                     } else {
                         callBack && callBack();
                     }
@@ -1727,7 +1928,7 @@ var baseORM = function(options, extORM){
                             W2PRESOURCE.gotData(data, callBack);
                         });
                 }
-            });
+            }).bind(this));
         }
     };
 
@@ -1780,7 +1981,7 @@ var baseORM = function(options, extORM){
                         callBack && callBack(modelCache[modelName]);
                         delete waitingConnections[modelName];
                     }, function(data){
-                        this.events.modelNotFound.handle(modelName);
+                        this.modelNotFound.handle(modelName);
                         failedModels[modelName] = true;
                     });
                 }
@@ -1851,16 +2052,7 @@ var baseORM = function(options, extORM){
             W2PRESOURCE.addPersistentAttributes(model.modelName);
         }
     });
-    this.connect = function(callBack){
-        if (this.isConnected){
-            callBack(this.connection.options);
-        } else {
-            this.connection.connect(function(status){
-                W2PRESOURCE.isConnected = true;
-                callBack(status);
-            });            
-        }
-    };
+
     this.query = function(modelName, filter, together, callBack){
         var ths = this;
         this.describe(modelName,function(model){
@@ -1876,6 +2068,14 @@ var baseORM = function(options, extORM){
     this.delete = function(modelName, ids, callBack){
         return this.$post(modelName + '/delete', { id : ids}, callBack);
     };
+
+    this.connect = function (callBack) {
+        if (this.connection.isLoggedIn) {
+            callBack();
+        } else {
+            this.connection.connect(callBack);
+        }
+    }
 };
 
 function reWheelORM(endPoint, loginFunc){
@@ -1883,9 +2083,29 @@ function reWheelORM(endPoint, loginFunc){
     this.on = this.$orm.on.bind(this.$orm);
     this.emit = this.$orm.emit.bind(this.$orm);
     this.unbind = this.$orm.unbind.bind(this.$orm);
+    this.once = this.$orm.once;
     this.addModelHandler = this.$orm.addModelHandler.bind(this.$orm);
     this.addPersistentAttributes = this.$orm.addPersistentAttributes.bind(this.$orm);
     this.utils = utils;
+    this.logout = this.$orm.connection.logout.bind(this.$orm.connection);
+}
+
+reWheelORM.prototype.connect = function(){
+    var connection = this.$orm.connection;
+    return new Promise((function(callBack,reject){
+        connection.connect(callBack);
+    }));
+}
+
+reWheelORM.prototype.login = function(username, password) {
+    return new Promise((function(accept,reject){
+        this.$orm.connection.login(username, password, accept);    
+    }).bind(this));
+    
+};
+
+reWheelORM.prototype.logout = function(url){
+    return this.$orm.connection.logout();
 }
 
 reWheelORM.prototype.getModel = function(modelName){
@@ -1936,13 +2156,9 @@ reWheelORM.prototype.query = function (modelName, filter, related){
             together = related.split(',');
         }
         try{
-            if (self.$orm.isConnected){
+            self.$orm.connect(function(){
                 self.$orm.query(modelName, filter, together, accept);
-            } else {
-                self.$orm.connect(function(){
-                    self.$orm.query(modelName, filter, together, accept);
-                });
-            }
+            });
         } catch (e){
             reject(e);
         }
@@ -1953,23 +2169,35 @@ reWheelORM.prototype.delete = function (modelName, ids){
     var self = this;
     return new Promise(function(accept, reject){
         try{
-            if (self.$orm.connected){
+            self.$orm.connect(function(){
                 self.$orm.delete(modelName, ids, accept);
-            } else {
-                self.$orm.connect(function(){
-                    self.$orm.delete(modelName, ids, accept);
-                });
-            }
+            });
         } catch (e){
             reject(e);
         }
     })
 };
 
+reWheelORM.prototype.getLoggedUser = function() {
+    var self = this;
+    if (this.$orm.connection.cachedStatus.user_id)
+        return this.get('auth_user',this.$orm.connection.cachedStatus.user_id);
+    else {
+        return new Promise(function(accept, reject) {
+            self.once('logged-in',function(user) {
+                self.get('auth_user', user).then(accept);
+            });
+        });
+    }
+}
+
 reWheelORM.prototype.$sendToEndpoint = function (url, data){
     return this.$orm.$post(url, data);
 }
 
+reWheelORM.prototype.login = function(username, password){
+    return this.$orm.connection.login(username,password);
+}
 
 var Lazy = require('lazy.js');
 var request = require('request');

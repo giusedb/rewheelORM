@@ -124,6 +124,8 @@ var baseORM = function(options, extORM){
     // creates dynamical models
     var makeModelClass = function (model) {
         var _model = model;
+        model.fields.id.readable = false;
+        model.fields.id.writable = false;
         var fields = Lazy(model.fields);
         if (model.privateArgs) {
             fields = fields.merge(model.privateArgs);
