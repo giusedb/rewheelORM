@@ -31,7 +31,8 @@
     "sockjs": "^0.3.18"
   },
   "scripts": {
-    "test": "node_modules/mocha/bin/mocha"
+    "test": "node_modules/mocha/bin/mocha",
+    "prepublish": "gulp && gulp build-node && gulp minified"
   },
   "devDependencies": {
     "browserify": "^13.1.1",

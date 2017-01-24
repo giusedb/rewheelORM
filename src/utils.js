@@ -375,6 +375,13 @@ var utils = {
             delete localStorage[k];
         })
     },
+
+    cleanDescription: function() {
+        Lazy(localStorage)
+            .filter(function(v, n) { return Lazy(n).startsWith('description:')})
+            .keys()
+            .each(function(n) { delete localStorage[n] });
+    },
     
     reverse : function (chr, str) {
         return str.split(chr).reverse().join(chr);
@@ -388,6 +395,17 @@ var utils = {
             }
         }
         return ret;
+    },
+
+    waitFor: function(func, callBack) {
+        var waiter = function() {
+            if (func()) {
+                callBack();
+            } else {
+                setTimeout(waiter,500);
+            }
+        }
+        setTimeout(waiter, 500);
     },
 
     bool: Boolean,

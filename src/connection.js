@@ -98,34 +98,46 @@ reWheelConnection.prototype.$post = function(url, data,callBack){
     return promise;
 };
 
+/**
+ * Check current status and callback for results.
+ * It caches results for further.
+ * @param callback: (status object)
+ * @param force: boolean if true empties cache  
+ * @return void
+ */
 reWheelConnection.prototype.status = function(callBack, force) {
-    /**
-     * Check current status and callback for results.
-     * It caches results for further.
-     * @param callback: (status object)
-     * @param force: boolean if true empties cache  
-     * @return void
-     */
     // if force, clear all cached values
+    var key = 'token:' + this.endPoint;
+    var ths = this;
     if (force) {
         this.cachedStatus = {};
-        if (STATUSKEY in localStorage){
-            delete localStorage[STATUSKEY];
-        }
+        delete localStorage[key];
+    }
+    if (this.statusWaiting) {
+        // wait for status
+        utils.waitFor(function() {
+            return !ths.statusWaiting;
+        }, function(){
+            ths.status(callBack,force);
+        });
+        return;
     }
     // try for value resolution
     // first on memory
     if (Lazy(this.cachedStatus).size()){
-    
+        callBack(this.cachedStatus)
     // then in localStorage
-    } else if (STATUSKEY in localStorage) {
-        this.updateStatus(JSON.parse(localStorage[STATUSKEY]));
-    // then on server
     } else {
-        var ths = this;
-        this.$post('api/status',{}, function(status){
-            callBack(status);
+        var data = {};
+        if (key in localStorage) {
+            data.__token__ = localStorage[key];
+        }
+        this.statusWaiting = true;
+        this.$post('api/status',data, function(status){
             ths.updateStatus(status);
+            localStorage[key] = status.token;
+            callBack(status);
+            ths.statusWaiting = false;
         });
         // doesn't call callback
         return
@@ -134,6 +146,11 @@ reWheelConnection.prototype.status = function(callBack, force) {
 };
 
 reWheelConnection.prototype.updateStatus = function(status){
+    var lastBuild = parseFloat(localStorage.lastBuild) || 1;
+    if (lastBuild < status.last_build){
+        utils.cleanDescription();
+        localStorage.lastBuild = status.last_build;
+    }
     this.isConnected = Boolean(status.token);
     this.isLoggedIn = Boolean(status.user_id);
     var oldStatus = this.cachedStatus;
@@ -210,7 +227,7 @@ reWheelConnection.prototype.connect = function(callBack) {
         this.once('logged-in',function(user_id){
             callBack(user_id);
         });
-        this.status(utils.noop);
+        this.status(callBack || utils.noop);
     }
 }
 
