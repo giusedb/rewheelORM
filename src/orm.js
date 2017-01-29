@@ -258,6 +258,7 @@ var baseORM = function(options, extORM){
                     delete o[fieldName];
                 }
             });
+            if (ID) { o.id = ID; }
             var promise = W2PRESOURCE.$post(modelName + (ID ? '/post' : '/put'), o);
             if (args && (args.constructor === Function)){
                 // placing callback in a common place
