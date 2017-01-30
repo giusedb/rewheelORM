@@ -19,12 +19,12 @@ function cachedPropertyByEvents(proto, propertyName,getter, setter){
     };
     if (setter){
         propertyDef['set'] = function(value){
-            if (value !== result[this.id]){
+//            if (value !== result[this.id]){
                 setter.call(this,value);
                 if (this.id in result){
                     delete result[this.id];
                 }
-            }
+//            }
         }
     }
     Object.defineProperty(proto, propertyName,propertyDef);

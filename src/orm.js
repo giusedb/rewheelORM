@@ -62,6 +62,7 @@ var baseORM = function(options, extORM){
 /*    window.ll = linker;
     window.lc = listCache;
 */
+    window.IDB = IDB;
     this.validationEvent = this.on('error-json-513', function(data, url, sentData, xhr){
         if (currentContext.savingErrorHanlder){
             currentContext.savingErrorHanlder(new ValidationError(data));
@@ -395,17 +396,19 @@ var baseORM = function(options, extORM){
                 if (!result && (ext_ref in linker.mainIndex)) {
                     // asking to linker
                     linker.mainIndex[ext_ref].ask(this[local_ref],true);
-                    return utils.mock();
+                    return utils.mock;
                 }
                 return result;
             }, function (value) {
                 if (value) {
-                    if (value.constructor.modelName != ext_ref) {
+                    if ((value.constructor !== utils.mock) && (value.constructor.modelName !== ext_ref)) {
                         throw new TypeError('You can assign only ' + ext_ref + ' to ' + ref.id);
                     }
+                    this[local_ref] = value.id;
+                } else {
+                    this[local_ref] = null;
                 }
-                this[local_ref] = value.id;
-            }, 'new-' + ext_ref, 'deleted-' + ext_ref,'updated-' + ext_ref, 'new-model-' + ext_ref);
+            }, 'new-' + ext_ref, 'deleted-' + ext_ref,'updated-' + ext_ref, 'new-model-' + ext_ref, 'updated-' + Klass.modelName);
 
 
             Klass.prototype['get' + utils.capitalize(ref.id)] = function () {
@@ -629,7 +632,7 @@ var baseORM = function(options, extORM){
                 // removing old identical values
                 updated = updated.filter(function (x) {
                     return !utils.sameAs(idx.get(x), itab.get(x).asRaw());
-                });
+                }).toArray();
                 // classify records
                 var perms = data.permissions ? Lazy(data.permissions) : Lazy({});
                 var newObjects = nnew.map(function (x) {
@@ -644,14 +647,15 @@ var baseORM = function(options, extORM){
                 var changed = [];
 //                var DATEFIELDS = MODEL_DATEFIELDS[modelName];
 //                var BOOLFIELDS = MODEL_BOOLFIELDS[modelName];
-                updated.each(function (x) {
-                    var oldItem = itab.get(x);
+                updated.forEach(function (x) {
+                    var oldItem = table[x];
                     var oldCopy = oldItem.copy();
                     var newItem = new modelClass(idx.get(x));
+                    // update old item to match new item;
                     Lazy(model.fields).keys().each(function(k){
                         oldItem[k] = newItem[k];
                     });
-                    changed.push([oldItem, oldCopy]);
+                    changed.push([newItem, oldCopy]);
                 });
 
                 //// sending signal for updated values

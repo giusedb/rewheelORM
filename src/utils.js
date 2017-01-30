@@ -11,7 +11,7 @@ function mockObject(){
                 if (name === 'toString') {
                     return nullString;
                 } else {
-                    return mockObject();
+                    return utils.mock;
                 }
             } else {
                 return target[name];
@@ -422,7 +422,7 @@ var utils = {
         integer: function(x) { return parseInt(x); },
         float: function(x) { return parseFloat(x); }
     }, 
-    mock : mockObject
+    mock : mockObject()
 };
 
 
