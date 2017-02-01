@@ -335,7 +335,7 @@ var utils = {
                 vals = vals.map(JSON.stringify);
             }
             return '(' +  Lazy(vals).map(function(x){
-                return '(x.' + field + ' === ' + x + ')';
+                return '(x.' + field + ' === ' + x || 'null' + ')';
             }).join(' || ')  +')';
         }).toArray().join(unifier);
         return new Function("x", "return " + source);
