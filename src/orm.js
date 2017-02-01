@@ -386,6 +386,7 @@ var baseORM = function(options, extORM){
             var ext_ref = ref.to;
             var local_ref = '_' + ref.id;
             cachedPropertyByEvents(Klass.prototype, ref.id,function () {
+                if (!this[local_ref]) { return null };
                 if (!(ext_ref in IDB)){
                     var ths = this;
                     W2PRESOURCE.describe(ext_ref,function(x){
@@ -395,7 +396,11 @@ var baseORM = function(options, extORM){
                 var result = (ext_ref in IDB) && this[local_ref] && IDB[ext_ref].get(this[local_ref]);
                 if (!result && (ext_ref in linker.mainIndex)) {
                     // asking to linker
-                    linker.mainIndex[ext_ref].ask(this[local_ref],true);
+                    if (typeof this[local_ref] === 'number') {
+                        linker.mainIndex[ext_ref].ask(this[local_ref],true);
+                    } else {
+                        console.warn('null reference for ' + local_ref + '(' + this.id + ') resource ' + Klass.modelName);
+                    }
                     return utils.mock;
                 }
                 return result;
@@ -408,7 +413,7 @@ var baseORM = function(options, extORM){
                 } else {
                     this[local_ref] = null;
                 }
-            }, 'new-' + ext_ref, 'deleted-' + ext_ref,'updated-' + ext_ref, 'new-model-' + ext_ref, 'updated-' + Klass.modelName);
+            }, 'new-' + ext_ref, 'deleted-' + ext_ref,'updated-' + ext_ref, 'new-model-' + ext_ref/*, 'updated-' + Klass.modelName*/);
 
 
             Klass.prototype['get' + utils.capitalize(ref.id)] = function () {
@@ -647,13 +652,37 @@ var baseORM = function(options, extORM){
                 var changed = [];
 //                var DATEFIELDS = MODEL_DATEFIELDS[modelName];
 //                var BOOLFIELDS = MODEL_BOOLFIELDS[modelName];
+                var modelReferences = Lazy(model.references).map(function(k) { return [k,1]}).toObject();
                 updated.forEach(function (x) {
                     var oldItem = table[x];
                     var oldCopy = oldItem.copy();
-                    var newItem = new modelClass(idx.get(x));
-                    // update old item to match new item;
-                    Lazy(model.fields).keys().each(function(k){
-                        oldItem[k] = newItem[k];
+                    var newItem = idx.get(x);
+                    
+                    // updating each attribute singularly
+
+                    Lazy(model.fields).each(function(field, fieldName) {
+                        switch(field.type) {
+                            case 'reference' : {
+                                oldItem['_' + fieldName] = newItem[fieldName];
+                                // NaN is convntionally a cache deleter
+                                oldItem[fieldName] = NaN;
+                                break
+                            };
+                            case 'date': {oldItem[fieldName] = new Date(newItem[fieldName] * 1000); break};
+                            case 'datetime': {oldItem[fieldName] = new Date(newItem[fieldName] * 1000); break};
+                            case 'boolean' : {
+                                switch (newItem[fieldName]) {
+                                    case null : { oldItem[fieldName] = null; break; };
+                                    case 'T' : { oldItem[fieldName] = true; break; };
+                                    case 'F' : { oldItem[fieldName] = false; break; };
+                                    case true : { oldItem[fieldName] = true; break; };
+                                    case false : { oldItem[fieldName] = false; break; };
+                                }
+                                break;
+                            };
+                            default: {oldItem[fieldName] = newItem[fieldName]}
+                        }
+//                        oldItem[fieldName] = newItem[fieldName];
                     });
                     changed.push([newItem, oldCopy]);
                 });
@@ -681,6 +710,8 @@ var baseORM = function(options, extORM){
                 W2PRESOURCE.emit('received-' + modelName);
             });
         });
+
+/*        
         if (TOONE) {
             console.error('TOONE');
             Lazy(TOONE).each(function (vals, modelName) {
@@ -714,6 +745,8 @@ var baseORM = function(options, extORM){
                 });
             });
         }
+      
+*/
         if (m2m) {
             W2PRESOURCE.gotM2M(m2m);
         }
@@ -995,20 +1028,27 @@ reWheelORM.prototype.get = function(modelName, ids){
     var self = this;
     var single = false;
     var modName = modelName;
-    if (ids.constructor !== Array){
+    var filter;
+    if (typeof ids === 'number') {
         single = true;
-        ids = [ids]
+        filter = { id : [ids]};
+    } else if (Array.isArray(ids)){
+        filter = { id : ids };
+    } else if (typeof ids === 'object') {
+        filter = ids;
+    } else if (ids === null) {
+        filter = {};
     }
     return new Promise(function(accept, reject){
         try{
             self.$orm.connect(function(){
-                if (single){
-                    self.$orm.get(modName, ids, function(items){ 
-                        accept(items[0]);}
-                    );
-                } else {
-                    self.$orm.get(modName, ids, accept);
-                }
+                self.$orm.query(modelName, filter, null, function(data) {
+                    if (single) {
+                        accept(data.length ? data[0] : null);
+                    } else {
+                        accept(data);
+                    }
+                });
             });
         } catch (e){
             reject(e);
@@ -1016,6 +1056,7 @@ reWheelORM.prototype.get = function(modelName, ids){
     });
 };
 
+/*
 reWheelORM.prototype.query = function (modelName, filter, related){
     var self = this;
     return new Promise(function(accept, reject){
@@ -1034,6 +1075,7 @@ reWheelORM.prototype.query = function (modelName, filter, related){
         }
     })
 };
+*/
 
 reWheelORM.prototype.delete = function (modelName, ids){
     var self = this;

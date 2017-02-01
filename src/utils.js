@@ -335,7 +335,12 @@ var utils = {
                 vals = vals.map(JSON.stringify);
             }
             return '(' +  Lazy(vals).map(function(x){
-                return '(x.' + field + ' === ' + x || 'null' + ')';
+                if (!x) {
+                    console.error('makeFilter x is null');
+                } else if(x === orm.utils.mock) {
+                    console.error('makeFilter with Mock Object');
+                }
+                return '(x.' + field + ' === ' + x + ')';
             }).join(' || ')  +')';
         }).toArray().join(unifier);
         return new Function("x", "return " + source);

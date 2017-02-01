@@ -11,6 +11,7 @@ function cachedPropertyByEvents(proto, propertyName,getter, setter){
     });
     var propertyDef = {
         get: function cached(){
+//            return getter.call(this);
             if (!(this.id in result)){
                 result[this.id] = getter.call(this);
             }
@@ -19,12 +20,18 @@ function cachedPropertyByEvents(proto, propertyName,getter, setter){
     };
     if (setter){
         propertyDef['set'] = function(value){
+            if (!isFinite(value)) {
+                if (this.id in result) {
+                    delete result[this.id];
+                }
+            } else {
 //            if (value !== result[this.id]){
                 setter.call(this,value);
                 if (this.id in result){
                     delete result[this.id];
                 }
 //            }
+            }
         }
     }
     Object.defineProperty(proto, propertyName,propertyDef);
