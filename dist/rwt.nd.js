@@ -516,7 +516,7 @@ var utils = {
 
 'use strict';
 
-const STATUSKEY = 'lastRWTConnectionStatus';
+var STATUSKEY = 'lastRWTConnectionStatus';
 
 function RealtimeConnection(endPoint, rwtConnection){
     /**
@@ -1622,7 +1622,7 @@ var baseORM = function(options, extORM){
             Klass.prototype['get' + utils.capitalize(utils.pluralize(ref.by))] = function () {
                 var opts = {};
                 opts[ref.id] = [this.id];
-                return extORM.query(ref.by,opts);
+                return extORM.get(ref.by,opts);
             };
         });
 

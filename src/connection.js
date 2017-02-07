@@ -1,6 +1,6 @@
 'use strict';
 
-const STATUSKEY = 'lastRWTConnectionStatus';
+var STATUSKEY = 'lastRWTConnectionStatus';
 
 function RealtimeConnection(endPoint, rwtConnection){
     /**
