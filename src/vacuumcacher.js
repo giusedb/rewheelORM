@@ -17,7 +17,7 @@ function VacuumCacher(touch, asked, name, pkIndex){
             return;
         }
         if (!Lazy(asked).contains(id)){
-            console.info('asking (' + id + ') from ' + name);
+//            console.info('asking (' + id + ') from ' + name);
             missing.push(id);
             if (!lazy)
                 asked.push(id);
