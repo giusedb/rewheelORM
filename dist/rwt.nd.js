@@ -1504,22 +1504,20 @@ var baseORM = function(options, extORM){
             Lazy(model.extra_verbs).each(function (x) {
                 var funcName = x[0];
                 var args = x[1];
-                var ddata = 'data = {id : this.id';
+                var ddata = 'var data = {id : this.id';
                 if (args.length)
                     ddata += ', ' + Lazy(args).map(function (x) {
                             return x + ' : ' + x;
                         }).join(',');
-                ddata += '};';
+                ddata += '};\n';
+                args = ['post','gotData'].concat(args);
                 args.push('cb');
-                Klass.prototype[funcName] = new Function(args, ddata + 'W2S.W2P_POST(this.constructor.modelName,"' + funcName + '", data,function(data,status,headers,x){' +
-                    'try{\n' +
-                    '   if (!headers("nomodel")) {window.W2S.gotData(data,cb);}\n' +
-                    '   else {if (cb) {cb(data)}}\n' +
-                    '} catch(e){\n' +
-                    'if (cb) {cb(data);}\n' +
-                    '}\n' +
-                    '});\n'
-                );
+                var code = ddata + ' retrun post("' + Klass.modelName + '/' + funcName + '", data,cb);';
+                var func = new Function(args, code);
+                Klass.prototype[funcName] = function() {
+                    var args = [post, gotData].concat(arguments);
+                    func.apply(this, args)
+                }
             });
         if ('privateArgs' in model) {
             Klass.privateArgs = Lazy(model.privateArgs).keys().map(function (x) {

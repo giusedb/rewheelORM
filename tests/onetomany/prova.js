@@ -29,7 +29,7 @@ function renderFolders() {
         });
 }
 
-orm.query('folder',{parent : [1], condominio : [1,2]})
+orm.get('folder',{parent : [1], condominio : [1,2]})
     .then(function(x){
         folders = x;
         renderFolders()

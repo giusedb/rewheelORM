@@ -320,22 +320,20 @@ var baseORM = function(options, extORM){
             Lazy(model.extra_verbs).each(function (x) {
                 var funcName = x[0];
                 var args = x[1];
-                var ddata = 'data = {id : this.id';
+                var ddata = 'var data = {id : this.id';
                 if (args.length)
                     ddata += ', ' + Lazy(args).map(function (x) {
                             return x + ' : ' + x;
                         }).join(',');
-                ddata += '};';
+                ddata += '};\n';
+                args = ['post','gotData'].concat(args);
                 args.push('cb');
-                Klass.prototype[funcName] = new Function(args, ddata + 'W2S.W2P_POST(this.constructor.modelName,"' + funcName + '", data,function(data,status,headers,x){' +
-                    'try{\n' +
-                    '   if (!headers("nomodel")) {window.W2S.gotData(data,cb);}\n' +
-                    '   else {if (cb) {cb(data)}}\n' +
-                    '} catch(e){\n' +
-                    'if (cb) {cb(data);}\n' +
-                    '}\n' +
-                    '});\n'
-                );
+                var code = ddata + ' return post("' + Klass.modelName + '/' + funcName + '", data,cb);';
+                var func = new Function(args, code);
+                Klass.prototype[funcName] = function() {
+                    var args = [W2PRESOURCE.$post, W2PRESOURCE.gotData].concat(Array.prototype.slice.call(arguments,0));
+                    return func.apply(this, args)
+                }
             });
         if ('privateArgs' in model) {
             Klass.privateArgs = Lazy(model.privateArgs).keys().map(function (x) {
@@ -386,7 +384,7 @@ var baseORM = function(options, extORM){
             var ext_ref = ref.to;
             var local_ref = '_' + ref.id;
             cachedPropertyByEvents(Klass.prototype, ref.id,function () {
-                if (!this[local_ref]) { return null };
+                if (!this[local_ref]) { return utils.mock };
                 if (!(ext_ref in IDB)){
                     var ths = this;
                     W2PRESOURCE.describe(ext_ref,function(x){
