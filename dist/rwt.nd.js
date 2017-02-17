@@ -1512,11 +1512,11 @@ var baseORM = function(options, extORM){
                 ddata += '};\n';
                 args = ['post','gotData'].concat(args);
                 args.push('cb');
-                var code = ddata + ' retrun post("' + Klass.modelName + '/' + funcName + '", data,cb);';
+                var code = ddata + ' return post("' + Klass.modelName + '/' + funcName + '", data,cb);';
                 var func = new Function(args, code);
                 Klass.prototype[funcName] = function() {
-                    var args = [post, gotData].concat(arguments);
-                    func.apply(this, args)
+                    var args = [W2PRESOURCE.$post, W2PRESOURCE.gotData].concat(Array.prototype.slice.call(arguments,0));
+                    return func.apply(this, args)
                 }
             });
         if ('privateArgs' in model) {
@@ -1568,7 +1568,7 @@ var baseORM = function(options, extORM){
             var ext_ref = ref.to;
             var local_ref = '_' + ref.id;
             cachedPropertyByEvents(Klass.prototype, ref.id,function () {
-                if (!this[local_ref]) { return null };
+                if (!this[local_ref]) { return utils.mock };
                 if (!(ext_ref in IDB)){
                     var ths = this;
                     W2PRESOURCE.describe(ext_ref,function(x){
