@@ -10,7 +10,13 @@ function AutoLinker(actives, IDB, W2PRESOURCE, listCache){
     this.m2m = m2m;
     this.m2mIndex = m2mIndex;
     this.permissions = permissions;
-
+/*
+    this.getM2mIndex = function(indexName, relation) {
+        if (!(indexName in m2mIndex)) {
+            m2mIndex[indexName] = new ManyToManyRelation(relation,m2m[relation.indexName]);
+        }
+    }
+*/
     W2PRESOURCE.on('model-definition',function(model, index){
         // defining all indexes for primary key
         var pkIndex = listCache.getIndexFor(model.name, 'id');

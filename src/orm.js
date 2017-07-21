@@ -62,7 +62,9 @@ var baseORM = function(options, extORM){
 /*    window.ll = linker;
     window.lc = listCache;
 */
+/*
     window.IDB = IDB;
+*/
     this.validationEvent = this.on('error-json-513', function(data, url, sentData, xhr){
         if (currentContext.savingErrorHanlder){
             currentContext.savingErrorHanlder(new ValidationError(data));
@@ -172,7 +174,9 @@ var baseORM = function(options, extORM){
 
         
         // master class function
-        var Klass = new Function('row', 'permissions',funcString)
+        var Klass = utils.renameFunction(utils.capitalize(model.name), new Function('row', 'permissions',funcString));
+        //var Klass = new Function('row', 'permissions',funcString);
+        
 
         Klass.prototype.orm = extORM;
         Klass.ref_translations = {};
@@ -1108,3 +1112,21 @@ reWheelORM.prototype.$sendToEndpoint = function (url, data){
 reWheelORM.prototype.login = function(username, password){
     return this.$orm.connection.login(username,password);
 }
+
+reWheelORM.prototype.getResources = function() {
+    var orm = this.$orm;
+    return new Promise(function(accept, reject) {
+        var connection = orm.connection;
+        utils.xdr(connection.endPoint + 'api/resources',null).then(function(xhr){
+            if (xhr.responseData) {
+                accept(xhr.responseData.sort());
+            } else {
+                reject(xhr);
+            }
+        });
+    });
+}
+
+reWheelORM.getCollection = function(modelName, ids) {
+    return new Collection(orm.$orm, ids, false, )  
+};

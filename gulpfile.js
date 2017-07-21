@@ -24,6 +24,7 @@ var files = [
     "listcacher",
     "manytomany",
     "cacher",
+    "collections",
     "orm",
 ];
 gulp.task('ts',function(){

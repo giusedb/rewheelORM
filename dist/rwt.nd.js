@@ -1184,6 +1184,29 @@ function cachedPropertyByEvents(proto, propertyName,getter, setter){
 
 'use strict';
 
+function Collection(orm, modelName, filterFunction, partial) {
+    this.modelName = modelName;
+    this.filter = filterFunction;
+    this.partial = partial || false;
+    orm.getModel('modelName').then((Model) => {
+        this.model = Model;
+        this.items = orm.$orm.IDB[modelName].values().filter(filterFunction);
+    });
+
+    orm.on('updated-' + modelName, function(items) {
+        
+    });
+
+    orm.on('new-' + modelName, function(items) {
+        Array.prototype.concat(this.items,items.filter(filterFunction).toArray());
+    });
+
+    orm.on('deleted-' + modelName, function(items) {
+
+    });
+}
+'use strict';
+
 function ValidationError(data){
     this.resource = data._resource;
     this.formIdx = data.formIdx;
@@ -1810,20 +1833,20 @@ var baseORM = function(options, extORM){
                     delete table[x];
                 });
 */
-                var idx = results.indexBy('id');
-                var ik = idx.keys();
+                var idx = results.indexBy('id').toObject();
+                var ik = Lazy(idx).keys();
                 var nnew = ik.difference(itab.keys().map(function (x) {
                     return parseInt(x)
                 }));
                 var updated = ik.difference(nnew);
                 // removing old identical values
                 updated = updated.filter(function (x) {
-                    return !utils.sameAs(idx.get(x), itab.get(x).asRaw());
+                    return !utils.sameAs(idx[x], table[x].asRaw());
                 }).toArray();
                 // classify records
                 var perms = data.permissions ? Lazy(data.permissions) : Lazy({});
                 var newObjects = nnew.map(function (x) {
-                    return new modelClass(idx.get(x), perms.get(x))
+                    return new modelClass(idx[x], perms.get(x))
                 });
 
                 //// classifying updated
