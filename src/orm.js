@@ -65,6 +65,7 @@ var baseORM = function(options, extORM){
 /*
     window.IDB = IDB;
 */
+    this.IDB = IDB;
     this.validationEvent = this.on('error-json-513', function(data, url, sentData, xhr){
         if (currentContext.savingErrorHanlder){
             currentContext.savingErrorHanlder(new ValidationError(data));
@@ -432,10 +433,16 @@ var baseORM = function(options, extORM){
                 console.error('Tryed to redefine property ' + propertyName + 's' + ' for ' + Klass.modelName);
             } else {
                 cachedPropertyByEvents(Klass.prototype, propertyName, function () {
+/*
+                    var filter = {}; 
+                    filter[ref.id] = this.id;
+                    return new Collection(W2PRESOURCE, ref.by, filter);
+*/
                     var ret = (revIndex in IDB) ? REVIDX[indexName].get(this.id + ''):null;
                     linker.foreignKeys[indexName].ask(this.id,true);
                     return ret;
-                }, null, 'new-' + revIndex, 'updated-' + revIndex, 'deleted-' + revIndex);
+
+                }, null /*, 'new-' + revIndex, 'updated-' + revIndex, 'deleted-' + revIndex*/);
             }
             Klass.prototype['get' + utils.capitalize(utils.pluralize(ref.by))] = function () {
                 var opts = {};
@@ -791,6 +798,9 @@ var baseORM = function(options, extORM){
         });
     }
 
+    /**
+     * fetch requested data with a single filter
+     */
     this.fetch = function (modelName, filter, together, callBack) {  //
         // if a connection is currently running, wait for connection.
         if (modelName in waitingConnections){
@@ -871,7 +881,7 @@ var baseORM = function(options, extORM){
         if (ret) {
             callBack && callBack(ret);
         } else {
-            if (!(modelName in waitingConnections)){
+            if (this.connection.isConnected && !(modelName in waitingConnections)){
                 if (modelName in failedModels){
                     return
                 }
@@ -913,6 +923,7 @@ var baseORM = function(options, extORM){
             builderHandlers[modelName].addHandler(decorator);
         }
     };
+    
     this.addPersistentAttributes = function(modelName, attributes){
         var addProperty = function(model, attributes) {
           attributes.forEach(function(val){
@@ -949,6 +960,7 @@ var baseORM = function(options, extORM){
             }
         }
     };
+    
     this.on('new-model', function(model){
         if (model.modelName in builderHandlers){
             builderHandlers[model.modelName].handle(modelCache[model.modelName]);
@@ -970,6 +982,7 @@ var baseORM = function(options, extORM){
             });
         })
     };
+    
     this.delete = function(modelName, ids, callBack){
         return this.$post(modelName + '/delete', { id : ids}, callBack);
     };

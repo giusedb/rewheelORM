@@ -159,3 +159,81 @@ function ListCacher(){
         return asked[indexName];
     }
 };
+
+function FilterTracer() {
+    this.explodedFilters = [];
+    this.keyset = [];
+}
+
+/**
+* Explode filter in single element filter
+* @param filter complex filter
+* @return listo of single element filter
+*/
+
+FilterTracer.prototype.explode = function(filter) {
+    var ret = [];
+    var keys = [];
+    var values = [];
+    // key and values split
+    _.forIn(filter, function(v,k){
+        keys.push(k); 
+        values.push(v);
+    });
+    function step(vals) {
+        if (ret.length) {
+            _.forEach(ret, function(x) {
+               _.forEach(vals, function(y) {
+                   ret.push(x.concat(y))
+               });
+            });
+        } else {
+            ret = vals.map(function(x) { return [x] });
+        }
+    }
+    _.forEach(values, step);
+    var l = keys.length;
+    return _.filter(ret, function(x) { return x.length === l})
+        .map(function(x) {
+            return _.object(keys, x);
+        });
+        
+}
+/**
+* Check if a is subset of b
+* @param a array (set)
+* @param b array (set)
+* @return boolean (is a subset of b)
+*/
+
+function isSubset(b,a) {
+    return (!_.isEqual(a,b)) && (_.isEqual(_.union(b,a),b)); 
+}
+
+/**
+* Reduce a filter excluding previously called filter
+* A filter is an object like where keys are fields and values 
+* are array of values
+* @param filter filter
+* @return a new filter or null if nothing has to be asked
+*/
+FilterTracer.prototype.reduce = function(filter) {
+    var keys = _.keys(filter).sort();
+    var exploded = this.explode(filter);
+    var keyset = this.keyset;
+    if (this.explodedFilters.length) {
+        // getting all subsets
+        var subsets = this.keyset.filter(_.partial(isSubset, keys));
+        // removing rows from found subsets
+        _.unique(subsets).forEach(function(subset){
+            _.remove(exploded, function(x){
+                return isSubset(subset,_.sort(_.keys(x)))
+            });
+        });
+    }
+    Array.prototype.push.call(this.explodedFilters, exploded);
+    if (!_.contains(keyset, keys)) {
+        keyset.push(keys);
+    }
+    this.keyset.push(keys);
+}
