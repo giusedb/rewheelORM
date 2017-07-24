@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "lazy.js": ">=0.4.2",
+    "lodash": "^4.17.4",
     "sockjs": "^0.3.18"
   },
   "scripts": {
