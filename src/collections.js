@@ -23,7 +23,7 @@ function Collection(orm, modelName, filter, partial, orderby, ipp) {
     var page = 1;
     this.updateData = updateData.addHandler.bind(updateData);
     this.items = [];
-    this.forEach = this.items.forEach.bind(this.items);
+//    this.forEach = this.items.forEach.bind(this.items);
     orm.describe(modelName, function(Model){
         self.model = Model;
         filterFunction = utils.makeFilter(Model, filter);
@@ -61,4 +61,8 @@ function Collection(orm, modelName, filter, partial, orderby, ipp) {
     orm.on('deleted-' + modelName, function(items) {
         console.warn('collection delete ' + modelName, items);
     });
-}
+};
+
+Collection.prototype.forEach = function (f) {
+    return this.items.forEach(f);
+};

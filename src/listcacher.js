@@ -161,9 +161,22 @@ function ListCacher(){
 };
 
 function FilterTracer() {
-    this.explodedFilters = [];
-    this.keyset = [];
+    /**
+    *  asked filter storage
+    *  { <pipe separated asked fields> : <array of array of asked values> }
+    */
+    this.explodedFilters = {id: []}; 
+    this.askedFilters = [];
 }
+
+/**
+* prepare a filter to be fetched
+* @param filter: filter to add
+*/
+FilterTracer.prototype.add = function(filter) {
+    this.askedFilters.push(filter);
+}
+
 
 /**
 * Explode filter in single element filter
@@ -180,34 +193,8 @@ FilterTracer.prototype.explode = function(filter) {
         keys.push(k); 
         values.push(v);
     });
-    function step(vals) {
-        if (ret.length) {
-            _.forEach(ret, function(x) {
-               _.forEach(vals, function(y) {
-                   ret.push(x.concat(y))
-               });
-            });
-        } else {
-            ret = vals.map(function(x) { return [x] });
-        }
-    }
-    _.forEach(values, step);
-    var l = keys.length;
-    return _.filter(ret, function(x) { return x.length === l})
-        .map(function(x) {
-            return _.object(keys, x);
-        });
-        
-}
-/**
-* Check if a is subset of b
-* @param a array (set)
-* @param b array (set)
-* @return boolean (is a subset of b)
-*/
-
-function isSubset(b,a) {
-    return (!_.isEqual(a,b)) && (_.isEqual(_.union(b,a),b)); 
+    var vals = Combinatorics.cartesianProduct.apply(this, values);
+    return vals.toArray(); // vals.map(_.partial(_.zipObject, keys));        
 }
 
 /**
@@ -217,23 +204,89 @@ function isSubset(b,a) {
 * @param filter filter
 * @return a new filter or null if nothing has to be asked
 */
-FilterTracer.prototype.reduce = function(filter) {
+FilterTracer.prototype.getFilters = function(filter) {
     var keys = _.keys(filter).sort();
+    var keysKey = _.join(keys, '|');
     var exploded = this.explode(filter);
-    var keyset = this.keyset;
-    if (this.explodedFilters.length) {
+    var keyset = _.keys(this.explodedFilters);
+    var self = this;
+    // cloning original exploded
+    var originalExploded = exploded.slice(0);
+    if (!(keysKey in this.explodedFilters)) {
+        this.explodedFilters[keysKey] = [];
+    }
+    if (keyset.length) {
         // getting all subsets
-        var subsets = this.keyset.filter(_.partial(isSubset, keys));
+        var subsets = _.intersection(keyset, Combinatorics.power(keys,function(x) { 
+            return x.join('|')}
+        ).slice(1));
         // removing rows from found subsets
-        _.unique(subsets).forEach(function(subset){
-            _.remove(exploded, function(x){
-                return isSubset(subset,_.sort(_.keys(x)))
+        subsets.forEach(function(key, index) {
+            var kkeys = _.split(key,'|');
+            var compatibleExploded = null;
+            var fromIndex = kkeys.map(_.partial(_.indexOf,keys));
+            // transforming exploded to subset exploded
+            if (key !== keysKey) {
+                compatibleExploded = _.uniqWith(exploded.map(function(x) {
+                    var ret = [];
+                    for (var i in fromIndex) {
+                        ret.push(x[fromIndex[i]]);
+                    }
+                    return ret;
+                }),_.identity);
+            } else {
+                compatibleExploded = exploded;
+            }
+            var toRemove = _.intersectionBy(self.explodedFilters[key],compatibleExploded, JSON.stringify);
+            if (toRemove.length) {
+                //console.log('remove ' + toRemove);
+                toRemove.forEach(function(y) {
+                    if (exploded.length) {
+                        var rf = new Function('x', 'return ' + fromIndex.map(function(i,n){
+                            return '(x[' + i + '] === ' + y[n] + ')';
+                        }).join(' && '));
+                        _.remove(exploded, rf);
+                    }
+                });
+            }
+        });
+    }
+    // looking for previously asked key subset
+    Array.prototype.push.apply(this.explodedFilters[keysKey], exploded);
+    
+    // cleaning supersets
+    var supersets = keyset
+        .map(function(x) {
+            return x.split('|');
+        })
+        .filter(function(x) {
+            return _.every(keys, function(v) {
+                return _.includes(x,v);
+            });
+        })
+        .filter(function(x) {
+            return !_.isEqual(x, keys);
+        });
+    if (supersets.length) {
+        // removing all values from supersets
+        supersets.forEach(function(key) {
+            var oldValues = self.explodedFilters[key.join('|')];
+            var fromIndex = keys.map(_.partial(_.indexOf,key));
+            exploded.forEach(function(y) {
+                var rf = new Function('x', 'return ' + fromIndex.map(function(i,n) { 
+                    return '(x[' + i  + '] === ' + y[n] + ')' 
+                }).join(' && '));
+                //console.log('old remove from ' + key + ' => ' + oldValues.filter(rf).json);
+                _.remove(oldValues, rf);
             });
         });
     }
-    Array.prototype.push.call(this.explodedFilters, exploded);
-    if (!_.contains(keyset, keys)) {
-        keyset.push(keys);
-    }
-    this.keyset.push(keys);
+
+    // fusing result filter
+    return this.implode(exploded,keys);
+};
+
+FilterTracer.prototype.implode = function (exploded, keys) {
+    if (!exploded.length) { return null; }
+    return _.zipObject(keys,_.unzip(exploded).map(_.uniq));
 }
