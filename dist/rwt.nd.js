@@ -718,7 +718,11 @@ reWheelConnection.prototype.login = function(username, password){
                 accept({status : 'success', userid: ths.cachedStatus.user_id});
             }, function(xhr) {
                 // if error call error manager with error
-                accept({error: xhr.responseData.error, status: 'error'});
+                var error = 'Could not receive error from server';
+                if (xhr.responseData && ('error' in xhr.responseData)) {
+                    error = xhr.responseData.error;
+                }
+                accept({error: error, status: 'error'});
             });
     });
 };
@@ -1810,20 +1814,20 @@ var baseORM = function(options, extORM){
                     delete table[x];
                 });
 */
-                var idx = results.indexBy('id');
-                var ik = idx.keys();
+                var idx = results.indexBy('id').toObject();
+                var ik = Lazy(idx).keys();
                 var nnew = ik.difference(itab.keys().map(function (x) {
                     return parseInt(x)
                 }));
                 var updated = ik.difference(nnew);
                 // removing old identical values
                 updated = updated.filter(function (x) {
-                    return !utils.sameAs(idx.get(x), itab.get(x).asRaw());
+                    return !utils.sameAs(idx[x], table[x].asRaw());
                 }).toArray();
                 // classify records
                 var perms = data.permissions ? Lazy(data.permissions) : Lazy({});
                 var newObjects = nnew.map(function (x) {
-                    return new modelClass(idx.get(x), perms.get(x))
+                    return new modelClass(idx[x], perms.get(x))
                 });
 
                 //// classifying updated

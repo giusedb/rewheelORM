@@ -202,7 +202,11 @@ reWheelConnection.prototype.login = function(username, password){
                 accept({status : 'success', userid: ths.cachedStatus.user_id});
             }, function(xhr) {
                 // if error call error manager with error
-                accept({error: xhr.responseData.error, status: 'error'});
+                var error = 'Could not receive error from server';
+                if (xhr.responseData && ('error' in xhr.responseData)) {
+                    error = xhr.responseData.error;
+                }
+                accept({error: error, status: 'error'});
             });
     });
 };
