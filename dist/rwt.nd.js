@@ -78,6 +78,15 @@ function NamedEventManager (){
             self.unbind(handler);
         })
     }
+
+    if ('DEBUG' in window) {
+        var emit = this.emit;
+        this.emit = (function() {
+            var args = Array.prototype.slice.call(arguments,0);
+            //console.info('Event : ' + args)
+            return emit.apply(this, args);
+        }).bind(this);
+    }
 }
 
 'use strict';
@@ -526,7 +535,7 @@ function RealtimeConnection(endPoint, rwtConnection){
 
     var connection = new SockJS(endPoint);
     connection.onopen = function (x) {
-        console.log('open : ' + x);
+        console.log('open : websocket');
         connection.tenant();
         rwtConnection.emit('realtime-connection-open',x);
     };
@@ -811,7 +820,13 @@ function AutoLinker(actives, IDB, W2PRESOURCE, listCache){
     this.m2m = m2m;
     this.m2mIndex = m2mIndex;
     this.permissions = permissions;
-
+/*
+    this.getM2mIndex = function(indexName, relation) {
+        if (!(indexName in m2mIndex)) {
+            m2mIndex[indexName] = new ManyToManyRelation(relation,m2m[relation.indexName]);
+        }
+    }
+*/
     W2PRESOURCE.on('model-definition',function(model, index){
         // defining all indexes for primary key
         var pkIndex = listCache.getIndexFor(model.name, 'id');
@@ -945,92 +960,187 @@ function ListCacher(){
     var gotAll = {};
     var asked = {}; // map of array
     var compositeAsked = {};
-    var cartesianProduct1 = function(x,y,isArray){
-        var ret = [];
-        if (isArray) {
-            for (var a in x){
-                for (var b in y){
-                    ret.push(Lazy([x[a],y[b]]).flatten().toArray());
-                }
-            }
-        } else {
-            for (var a in x){
-                for (var b in y){
-                    ret.push([x[a],y[b]]);
-                }
-            }
-        }
-        return ret;
-    };
-    var cartesianProduct = function(arr){
-        var isArray = false;
-        var ret = arr[0]; 
-        for (var x = 1; x < arr.length; ++x){
-            ret = cartesianProduct1(ret, arr[x], isArray);
-            isArray = true;
-        }
-        return ret;
-    }
-    var explodeFilter = function(filter) {
-        var product = cartesianProduct(Lazy(filter).values().toArray());
-        var keys = Lazy(filter).keys().toArray();
-        return product.map(function(x){
-            var r = {};
-            keys.forEach(function(a,n){
-                r[a] = x[n];
-            })
-            return r;
-        });
-        
-    };
-    var filterSingle = function(model, filter, testOnly){
-        // Lazy auto create indexes
-        var modelName = model.modelName;
-        var getIndexFor = this.getIndexFor;
-        var keys = Lazy(filter).map(function(v,key){ return [key, modelName + '.' + key]; }).toObject();
-        var indexes = Lazy(filter).keys().map(function(key){ return [key, getIndexFor(modelName, key)]}).toObject(); 
-        // fake for (it will cycle once)
-        for (var x in filter){
-            // get asked index and check presence
-            var difference = Lazy(filter[x]).difference(indexes[x]).toArray();
-            if (difference.length){
-                // generate new filter
-                var ret = Lazy([[x, difference]]).toObject();
-                // remember asked
-                if (!testOnly)
-                    Array.prototype.push.apply(indexes[x], difference);
-//                console.log('single filter : ' + JSON.stringify(filter) + '\nOut :' + JSON.stringify(ret));
-                return ret;
-            } else {
-//                console.log('single filter : ' + JSON.stringify(filter) + '\nOut : null');
-                return null;
-            }
-        }
-    };
+    var tracers = {};
 
-    var cleanComposites = function(model,filter){
-        /**
-         * clean compositeAsked
-         */
-        // lazy create conditional asked index
-        if (!(model.name in compositeAsked)) { compositeAsked[model.name] = [] };
-        var index = compositeAsked[model.name];
-        // search for all elements who have same partial
-        var filterLen = Lazy(filter).size();
-        var items = index.filter(utils.makeFilter(model, filter, ' && ',true)).filter(function(item){ Lazy(item).size() > filterLen });
-//        console.log('deleting :' + JSON.stringify(items));
-    };
+    function getTracer(modelName) {
+        if (!(modelName in tracers)) {
+            tracers[modelName] = new FilterTracer();
+        }
+        return tracers[modelName];
+    }
 
     this.filter = function(model, filter){
 //        console.log('------------------\nfilter : ' + JSON.stringify(filter));
         var modelName = model.modelName;
 
         // if you fetch all objects from server, this model has to be marked as got all;
-        var filterLen  = Lazy(filter).size();
+        var got = gotAll[modelName];
+        if (got) {
+            return null;
+        }
+        var filterLen  = _.size(filter);
+        if (filterLen === 0){
+            gotAll[modelName] = true;
+            if (modelName in asked){
+                delete asked[modelName];
+            }
+            return {};
+        }
+        var ret = getTracer(modelName).getFilters(filter);
+        return ret;
+    };
+
+    this.getIndexFor = function(modelName, fieldName){
+        var indexName = modelName + '.' + fieldName;
+        if (!(indexName in asked)){
+            asked[indexName] = [];
+        }
+        return asked[indexName];
+    }
+};
+
+function FilterTracer() {
+    /**
+    *  asked filter storage
+    *  { <pipe separated asked fields> : <array of array of asked values> }
+    */
+    this.explodedFilters = {id: []}; 
+    this.askedFilters = [];
+}
+
+/**
+* prepare a filter to be fetched
+* @param filter: filter to add
+*/
+FilterTracer.prototype.add = function(filter) {
+    this.askedFilters.push(filter);
+}
+
+
+/**
+* Explode filter in single element filter
+* @param filter complex filter
+* @return listo of single element filter
+*/
+
+FilterTracer.prototype.explode = function(filter) {
+    var ret = [];
+    var keys = [];
+    var values = [];
+    // key and values split
+    _.forIn(filter, function(v,k){
+        keys.push(k); 
+        values.push(v);
+    });
+    var vals = Combinatorics.cartesianProduct.apply(this, values);
+    return vals.toArray(); // vals.map(_.partial(_.zipObject, keys));        
+}
+
+/**
+* Reduce a filter excluding previously called filter
+* A filter is an object like where keys are fields and values 
+* are array of values
+* @param filter filter
+* @return a new filter or null if nothing has to be asked
+*/
+FilterTracer.prototype.getFilters = function(filter) {
+    var keys = _.keys(filter).sort();
+    var keysKey = _.join(keys, '|');
+    var exploded = this.explode(filter);
+    var keyset = _.keys(this.explodedFilters);
+    var self = this;
+    
+    // cloning original exploded
+    var originalExploded = exploded.slice(0);
+    
+    if (!(keysKey in this.explodedFilters)) {
+        this.explodedFilters[keysKey] = [];
+    }
+    
+    if (keyset.length) {
+        // getting all subsets
+        var subsets = _.intersection(keyset, Combinatorics.power(keys,function(x) { 
+            return x.join('|')}
+        ).slice(1));
+        // removing rows from found subsets
+        subsets.forEach(function(key, index) {
+            var kkeys = _.split(key,'|');
+            var compatibleExploded = null;
+            var fromIndex = kkeys.map(_.partial(_.indexOf,keys));
+            // transforming exploded to subset exploded
+            if (key !== keysKey) {
+                compatibleExploded = _.uniqWith(exploded.map(function(x) {
+                    var ret = [];
+                    for (var i in fromIndex) {
+                        ret.push(x[fromIndex[i]]);
+                    }
+                    return ret;
+                }),_.identity);
+            } else {
+                compatibleExploded = exploded;
+            }
+            var toRemove = _.intersectionBy(self.explodedFilters[key],compatibleExploded, JSON.stringify);
+            if (toRemove.length) {
+                //console.log('remove ' + toRemove);
+                toRemove.forEach(function(y) {
+                    if (exploded.length) {
+                        var rf = new Function('x', 'return ' + fromIndex.map(function(i,n){
+                            return '(x[' + i + '] === ' + y[n] + ')';
+                        }).join(' && '));
+                        _.remove(exploded, rf);
+                    }
+                });
+            }
+        });
+    }
+    // looking for previously asked key subset
+    Array.prototype.push.apply(this.explodedFilters[keysKey], exploded);
+    
+    // cleaning supersets
+    var supersets = keyset
+        .map(function(x) {
+            return x.split('|');
+        })
+        .filter(function(x) {
+            return _.every(keys, function(v) {
+                return _.includes(x,v);
+            });
+        })
+        .filter(function(x) {
+            return !_.isEqual(x, keys);
+        });
+    if (supersets.length) {
+        // removing all values from supersets
+        supersets.forEach(function(key) {
+            var oldValues = self.explodedFilters[key.join('|')];
+            var fromIndex = keys.map(_.partial(_.indexOf,key));
+            exploded.forEach(function(y) {
+                var rf = new Function('x', 'return ' + fromIndex.map(function(i,n) { 
+                    return '(x[' + i  + '] === ' + y[n] + ')' 
+                }).join(' && '));
+                //console.log('old remove from ' + key + ' => ' + oldValues.filter(rf).json);
+                _.remove(oldValues, rf);
+            });
+        });
+    }
+
+    // fusing result filter
+    return this.implode(exploded,keys);
+};
+
+FilterTracer.prototype.implode = function (exploded, keys) {
+    if (!exploded.length) { return null; }
+    return _.zipObject(keys,_.unzip(exploded).map(_.uniq));
+}
+
+
+
+/*
+this was part of listCache.filter method
         switch (filterLen) {
             case 0 : {
                 // return null or all
-                var got = gotAll[modelName];
+                
                 gotAll[modelName] = true;
                 if (modelName in asked){
                     delete asked[modelName];
@@ -1090,16 +1200,83 @@ function ListCacher(){
             return missings;
         }
         return null;
+*/
+
+/*
+    var cartesianProduct1 = function(x,y,isArray){
+        var ret = [];
+        if (isArray) {
+            for (var a in x){
+                for (var b in y){
+                    ret.push(Lazy([x[a],y[b]]).flatten().toArray());
+                }
+            }
+        } else {
+            for (var a in x){
+                for (var b in y){
+                    ret.push([x[a],y[b]]);
+                }
+            }
+        }
+        return ret;
+    };
+    var cartesianProduct = function(arr){
+        var isArray = false;
+        var ret = arr[0]; 
+        for (var x = 1; x < arr.length; ++x){
+            ret = cartesianProduct1(ret, arr[x], isArray);
+            isArray = true;
+        }
+        return ret;
+    }
+    var explodeFilter = function(filter) {
+        var product = cartesianProduct(Lazy(filter).values().toArray());
+        var keys = Lazy(filter).keys().toArray();
+        return product.map(function(x){
+            var r = {};
+            keys.forEach(function(a,n){
+                r[a] = x[n];
+            })
+            return r;
+        });
     };
 
-    this.getIndexFor = function(modelName, fieldName){
-        var indexName = modelName + '.' + fieldName;
-        if (!(indexName in asked)){
-            asked[indexName] = [];
+    var filterSingle = function(model, filter, testOnly){
+        // Lazy auto create indexes
+        var modelName = model.modelName;
+        var getIndexFor = this.getIndexFor;
+        var keys = Lazy(filter).map(function(v,key){ return [key, modelName + '.' + key]; }).toObject();
+        var indexes = Lazy(filter).keys().map(function(key){ return [key, getIndexFor(modelName, key)]}).toObject(); 
+        // fake for (it will cycle once)
+        for (var x in filter){
+            // get asked index and check presence
+            var difference = Lazy(filter[x]).difference(indexes[x]).toArray();
+            if (difference.length){
+                // generate new filter
+                var ret = Lazy([[x, difference]]).toObject();
+                // remember asked
+                if (!testOnly)
+                    Array.prototype.push.apply(indexes[x], difference);
+//                console.log('single filter : ' + JSON.stringify(filter) + '\nOut :' + JSON.stringify(ret));
+                return ret;
+            } else {
+//                console.log('single filter : ' + JSON.stringify(filter) + '\nOut : null');
+                return null;
+            }
         }
-        return asked[indexName];
-    }
-};
+    };
+
+    var cleanComposites = function(model,filter){
+        // lazy create conditional asked index
+        if (!(model.name in compositeAsked)) { compositeAsked[model.name] = [] };
+        var index = compositeAsked[model.name];
+        // search for all elements who have same partial
+        var filterLen = Lazy(filter).size();
+        var items = index.filter(utils.makeFilter(model, filter, ' && ',true)).filter(function(item){ Lazy(item).size() > filterLen });
+//        console.log('deleting :' + JSON.stringify(items));
+    };
+
+*/
 'use strict';
 
 function ManyToManyRelation(relation,m2m){
@@ -1184,27 +1361,73 @@ function cachedPropertyByEvents(proto, propertyName,getter, setter){
 
 'use strict';
 
-function Collection(orm, modelName, filterFunction, partial) {
+function LazyLinker(actives, IDB, orm, listCache) {
+    var unsolvedFilters = {};
+    this.resolve = function(modelName, filter) {
+        unsolved_filters.push(filter);
+    };
+    
+    function mergeFilters() {
+        var result = [];
+        for (var modelName in unsolvedFilters) {
+            unsolvedFilters[modelName].forEach(function(filter) {
+                
+            });
+        }
+    }
+}
+
+function Collection(orm, modelName, filter, partial, orderby, ipp) {
+    var self = this;
+    var filterFunction = null;
+    var updateData = new Handler();
+    var page = 1;
+    this.updateData = updateData.addHandler.bind(updateData);
+    this.items = [];
+//    this.forEach = this.items.forEach.bind(this.items);
+    orm.describe(modelName, function(Model){
+        self.model = Model;
+        filterFunction = utils.makeFilter(Model, filter);
+    });
     this.modelName = modelName;
-    this.filter = filterFunction;
+    this.initialFilter = filter
     this.partial = partial || false;
-    orm.getModel('modelName').then((Model) => {
-        this.model = Model;
-        this.items = orm.$orm.IDB[modelName].values().filter(filterFunction);
+
+
+    var updateValues = function(newItems) {
+        if (orderby) {
+            newItems = _.orderby(newItems, _.keys(orderby), _.values(orderby));
+        }
+        if (ipp) {
+            
+        }
+        self.forEach = self.items.forEach.bind(self.items);
+    };
+
+    orm.query(modelName, filter, null, function(items){
+        self.items = items;
     });
 
     orm.on('updated-' + modelName, function(items) {
-        
+        console.warn('collection update ' + modelName, items);
     });
 
     orm.on('new-' + modelName, function(items) {
-        Array.prototype.concat(this.items,items.filter(filterFunction).toArray());
+        console.warn('collection new ' + modelName, items);
+        items = items.toArray();
+        self.items = _.union(self.items, items.filter(filterFunction));
+        updateData.handle(self);
     });
 
     orm.on('deleted-' + modelName, function(items) {
-
+        console.warn('collection delete ' + modelName, items);
     });
-}
+};
+
+Collection.prototype.forEach = function (f) {
+    return this.items.forEach(f);
+};
+
 'use strict';
 
 function ValidationError(data){
@@ -1269,7 +1492,10 @@ var baseORM = function(options, extORM){
 /*    window.ll = linker;
     window.lc = listCache;
 */
+/*
     window.IDB = IDB;
+*/
+    this.IDB = IDB;
     this.validationEvent = this.on('error-json-513', function(data, url, sentData, xhr){
         if (currentContext.savingErrorHanlder){
             currentContext.savingErrorHanlder(new ValidationError(data));
@@ -1379,7 +1605,9 @@ var baseORM = function(options, extORM){
 
         
         // master class function
-        var Klass = new Function('row', 'permissions',funcString)
+        var Klass = utils.renameFunction(utils.capitalize(model.name), new Function('row', 'permissions',funcString));
+        //var Klass = new Function('row', 'permissions',funcString);
+        
 
         Klass.prototype.orm = extORM;
         Klass.ref_translations = {};
@@ -1635,10 +1863,16 @@ var baseORM = function(options, extORM){
                 console.error('Tryed to redefine property ' + propertyName + 's' + ' for ' + Klass.modelName);
             } else {
                 cachedPropertyByEvents(Klass.prototype, propertyName, function () {
+/*
+                    var filter = {}; 
+                    filter[ref.id] = this.id;
+                    return new Collection(W2PRESOURCE, ref.by, filter);
+*/
                     var ret = (revIndex in IDB) ? REVIDX[indexName].get(this.id + ''):null;
                     linker.foreignKeys[indexName].ask(this.id,true);
                     return ret;
-                }, null, 'new-' + revIndex, 'updated-' + revIndex, 'deleted-' + revIndex);
+
+                }, null /*, 'new-' + revIndex, 'updated-' + revIndex, 'deleted-' + revIndex*/);
             }
             Klass.prototype['get' + utils.capitalize(utils.pluralize(ref.by))] = function () {
                 var opts = {};
@@ -1994,6 +2228,9 @@ var baseORM = function(options, extORM){
         });
     }
 
+    /**
+     * fetch requested data with a single filter
+     */
     this.fetch = function (modelName, filter, together, callBack) {  //
         // if a connection is currently running, wait for connection.
         if (modelName in waitingConnections){
@@ -2074,7 +2311,7 @@ var baseORM = function(options, extORM){
         if (ret) {
             callBack && callBack(ret);
         } else {
-            if (!(modelName in waitingConnections)){
+            if (this.connection.isConnected && !(modelName in waitingConnections)){
                 if (modelName in failedModels){
                     return
                 }
@@ -2116,6 +2353,7 @@ var baseORM = function(options, extORM){
             builderHandlers[modelName].addHandler(decorator);
         }
     };
+    
     this.addPersistentAttributes = function(modelName, attributes){
         var addProperty = function(model, attributes) {
           attributes.forEach(function(val){
@@ -2152,6 +2390,7 @@ var baseORM = function(options, extORM){
             }
         }
     };
+    
     this.on('new-model', function(model){
         if (model.modelName in builderHandlers){
             builderHandlers[model.modelName].handle(modelCache[model.modelName]);
@@ -2173,6 +2412,7 @@ var baseORM = function(options, extORM){
             });
         })
     };
+    
     this.delete = function(modelName, ids, callBack){
         return this.$post(modelName + '/delete', { id : ids}, callBack);
     };
@@ -2315,6 +2555,24 @@ reWheelORM.prototype.$sendToEndpoint = function (url, data){
 reWheelORM.prototype.login = function(username, password){
     return this.$orm.connection.login(username,password);
 }
+
+reWheelORM.prototype.getResources = function() {
+    var orm = this.$orm;
+    return new Promise(function(accept, reject) {
+        var connection = orm.connection;
+        utils.xdr(connection.endPoint + 'api/resources',null).then(function(xhr){
+            if (xhr.responseData) {
+                accept(xhr.responseData.sort());
+            } else {
+                reject(xhr);
+            }
+        });
+    });
+}
+
+reWheelORM.getCollection = function(modelName, ids) {
+    return new Collection(orm.$orm, ids, false, )  
+};
 
 var Lazy = require('lazy.js');
 var request = require('request');

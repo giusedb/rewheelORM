@@ -83,7 +83,7 @@ function NamedEventManager (){
         var emit = this.emit;
         this.emit = (function() {
             var args = Array.prototype.slice.call(arguments,0);
-            console.info('Event : ' + args)
+            //console.info('Event : ' + args)
             return emit.apply(this, args);
         }).bind(this);
     }

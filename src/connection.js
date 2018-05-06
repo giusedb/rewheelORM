@@ -10,7 +10,7 @@ function RealtimeConnection(endPoint, rwtConnection){
 
     var connection = new SockJS(endPoint);
     connection.onopen = function (x) {
-        console.log('open : ' + x);
+        console.log('open : websocket');
         connection.tenant();
         rwtConnection.emit('realtime-connection-open',x);
     };
