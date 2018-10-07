@@ -107,7 +107,7 @@ var baseORM = function(options, extORM){
         };
         data.id = this.id;
         var modelName = this.klass.modelName;
-        W2PRESOURCE.$post(this.klass.modelName + '/set_permissions', data, function (myPerms, a, b, req) {
+        W2PRESOURCE.$post(this.klass.modelName + '.set_permissions', data, function (myPerms, a, b, req) {
             cb(myPerms);
         });
     };
@@ -225,7 +225,7 @@ var baseORM = function(options, extORM){
         // getting full permission table for an object
         Klass.prototype.all_perms = function (cb) {
             var object_id = this.id;
-            W2PRESOURCE.$post(this.constructor.modelName + '/all_perms', {id: this.id}, function (data) {
+            W2PRESOURCE.$post(this.constructor.modelName + '.all_perms', {id: this.id}, function (data) {
                 var permissions = data;
                 var grouped = {};
                 var unknown_groups = Lazy(permissions).pluck('group_id').unique().map(function (x) {
@@ -265,7 +265,7 @@ var baseORM = function(options, extORM){
                 }
             });
             if (ID) { o.id = ID; }
-            var promise = W2PRESOURCE.$post(modelName + (ID ? '/post' : '/put'), o);
+            var promise = W2PRESOURCE.$post(modelName + (ID ? '.post' : '.put'), o);
             if (args && (args.constructor === Function)){
                 // placing callback in a common place
                 promise.context.savingErrorHanlder = args;
@@ -333,7 +333,7 @@ var baseORM = function(options, extORM){
                 ddata += '};\n';
                 args = ['post','gotData'].concat(args);
                 args.push('cb');
-                var code = ddata + ' return post("' + Klass.modelName + '/' + funcName + '", data,cb);';
+                var code = ddata + ' return post("' + Klass.modelName + '.' + funcName + '", data,cb);';
                 var func = new Function(args, code);
                 Klass.prototype[funcName] = function() {
                     var args = [W2PRESOURCE.$post, W2PRESOURCE.gotData].concat(Array.prototype.slice.call(arguments,0));
@@ -358,7 +358,7 @@ var baseORM = function(options, extORM){
                         oo[k] = v;
                     }
                 });
-                W2PRESOURCE.$post(this.constructor.modelName + '/savePA', oo, function () {
+                W2PRESOURCE.$post(this.constructor.modelName + '.savePA', oo, function () {
                     Lazy(oo).each(function (v, k) {
                         T[k] = v;
                     });
@@ -552,14 +552,14 @@ var baseORM = function(options, extORM){
                         var collection = Lazy(refs).map(function (x) {
                             return [ID, x]
                         }).toArray();
-                        W2P_POST(Klass.modelName, omodel + 's/put', {collection: collection}, function (data) {
+                        W2P_POST(Klass.modelName, omodel + 's.put', {collection: collection}, function (data) {
                         });
                     }
                 } else {
                     if ((indexName in linker.m2mIndex) && Lazy(linker.m2mIndex[indexName]['get' + utils.capitalize(omodel)](instance.id)).find(this)) {
                         return;
                     }
-                    W2PRESOURCE.$post(Klass.modelName + '/' + omodel + 's/put', {collection: [[this.id, instance.id]]});
+                    W2PRESOURCE.$post(Klass.modelName + '/' + omodel + 's.put', {collection: [[this.id, instance.id]]});
                 }
             };
         }
@@ -821,7 +821,7 @@ var baseORM = function(options, extORM){
                         // ask for missings and parse server response in order to enrich my local DB.
                         // placing lock for this model
                         waitingConnections[modelName] = true;
-                        W2PRESOURCE.$post(modelName + '/list', {filter : filter})
+                        W2PRESOURCE.$post(modelName + '.list', {filter : filter})
                             .then(function(data){
                                 W2PRESOURCE.gotData(data,callBack);
 
@@ -836,7 +836,7 @@ var baseORM = function(options, extORM){
                     }
                     return filter;
                 } else {
-                    this.$post(modelName + '/list', sendData,function (data) {
+                    this.$post(modelName + '.list', sendData,function (data) {
                             if (!filter) {
                                 GOT_ALL.source.push(modelName);
                             }
@@ -891,7 +891,7 @@ var baseORM = function(options, extORM){
                     callBack && callBack(modelCache[modelName]);
                 } else {
                     waitingConnections[modelName] = true;
-                    this.$post(modelName + '/describe',null, function(data){
+                    this.$post(modelName + '.describe',null, function(data){
                         W2PRESOURCE.gotModel(data);
                         callBack && callBack(modelCache[modelName]);
                         delete waitingConnections[modelName];
@@ -984,7 +984,7 @@ var baseORM = function(options, extORM){
     };
     
     this.delete = function(modelName, ids, callBack){
-        return this.$post(modelName + '/delete', { id : ids}, callBack);
+        return this.$post(modelName + '.delete', { id : ids}, callBack);
     };
 
     this.connect = function (callBack) {
@@ -1140,6 +1140,6 @@ reWheelORM.prototype.getResources = function() {
     });
 }
 
-reWheelORM.getCollection = function(modelName, ids) {
-    return new Collection(orm.$orm, ids, false, )  
+reWheelORM.prototype.getCollection = function(modelName, filterOrIds) {
+    return new Collection(orm.$orm, modelName, filterOrIds || {});
 };

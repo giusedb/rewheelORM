@@ -43,7 +43,8 @@ function AutoLinker(actives, IDB, W2PRESOURCE, listCache){
         });
     });
     var m2mGet = function(indexName, n, collection, callBack){
-        W2PRESOURCE.$post((n ? utils.reverse('/', indexName) : indexName) + 's' + '/list', {collection: collection}, function(data){
+//        indexName = indexName.replace('/','--');
+        W2PRESOURCE.$post((n ? utils.reverse('/', indexName) : indexName) + 's' + '.list', {collection: collection}, function(data){
             W2PRESOURCE.gotData(data, callBack);
             delete actives[indexName]
         });        

@@ -129,7 +129,7 @@ FilterTracer.prototype.getFilters = function(filter) {
                 toRemove.forEach(function(y) {
                     if (exploded.length) {
                         var rf = new Function('x', 'return ' + fromIndex.map(function(i,n){
-                            return '(x[' + i + '] === ' + y[n] + ')';
+                            return '(x[' + i + '] === ' + JSON.stringify(y[n]) + ')';
                         }).join(' && '));
                         _.remove(exploded, rf);
                     }
