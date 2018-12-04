@@ -334,7 +334,8 @@ var baseORM = function(options, extORM){
                 args = ['post','gotData'].concat(args);
                 args.push('cb');
                 var code = ddata + ' return post("' + Klass.modelName + '.' + funcName + '", data,cb);';
-                var func = new Function(args, code);
+                args.push(code);
+                var func = Function.apply(Klass.prototype, args);
                 Klass.prototype[funcName] = function() {
                     var args = [W2PRESOURCE.$post, W2PRESOURCE.gotData].concat(Array.prototype.slice.call(arguments,0));
                     return func.apply(this, args)

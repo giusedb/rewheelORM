@@ -89,7 +89,7 @@ FilterTracer.prototype.explode = function(filter) {
 */
 FilterTracer.prototype.getFilters = function(filter) {
     var keys = _.keys(filter).sort();
-    var keysKey = _.join(keys, '|');
+    var keysKey = _(keys).join('|');
     var exploded = this.explode(filter);
     var keyset = _.keys(this.explodedFilters);
     var self = this;
